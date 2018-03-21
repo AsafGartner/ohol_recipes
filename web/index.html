@@ -1,0 +1,244 @@
+<html>
+<head>
+<meta charset="UTF-8">
+</head>
+<style>
+/*
+darkest: #002b36;
+dark: #073642;
+darkest_content: #586e75;
+dark_content: #657b83;
+light_content: #839496;
+lightest_content: #93a1a1;
+light: #eee8d5;
+lightest: #fdf6e3;
+yellow: #b58900;
+orange: #cb4b16;
+red: #dc322f;
+magenta: #d33682;
+violet: #6c71c4;
+blue: #268bd2;
+cyan: #2aa198;
+green: #859900;
+*/
+body {
+    font-family: sans-serif;
+    margin: 0;
+    color: #586e75;
+    overflow-y: scroll;
+    height: 100%;
+    background: #002b36;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+.header > * {
+    margin: 0;
+    text-align: center;
+    color: white;
+}
+
+.header h1 {
+    font-size: 60px;
+}
+
+.header h2 {
+    font-size: 40px;
+}
+
+.search_box {
+    width: 800px;
+    margin: 20px auto;
+}
+
+.search_box .input input {
+    width: 100%;
+    display: inline-block;
+    font-size: 20px;
+    padding: 5px 10px;
+    background: #073642;
+    border: none;
+    color: #657b83;
+    border-radius: 5px;
+}
+
+.search_box .categories {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.search_box .categories > span {
+    background: #073642;
+    padding: 3px;
+    min-width: 100px;
+    display: inline-block;
+    text-align: center;
+    cursor: pointer;
+    font-weight: bold;
+}
+.search_box .categories > span:hover {
+    background: rgb(22, 96, 138);
+    color: rgb(171, 182, 186);
+}
+
+.search_box .categories > span.active {
+    background: #268bd2;
+    color: white;
+}
+
+.search_box .categories > span:first-child {
+    border-radius: 7px 0 0 7px;
+}
+
+.search_box .categories > span:last-child {
+    border-radius: 0 7px 7px 0;
+}
+
+.object {
+    border-radius: 10px;
+    display: inline-block;
+    margin: 5px;
+    position: relative;
+    overflow: hidden;
+    background-color: #073642;
+    cursor: pointer;
+}
+
+.object .biomes {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: row;
+    filter: contrast(50%);
+}
+
+.object .biomes > div {
+    flex: 1 1 auto;
+    display: none;
+}
+
+.object .biomes .biome0 {
+    background: url(ground_0.png);
+}
+.object .biomes .biome1 {
+    background: url(ground_1.png);
+}
+.object .biomes .biome2 {
+    background: url(ground_2.png);
+}
+.object .biomes .biome3 {
+    background: url(ground_3.png);
+}
+.object .biomes .biome4 {
+    background: url(ground_4.png);
+}
+
+.object .name {
+    width: 100%;
+    text-align: center;
+    display: block;
+    position: relative;
+    bottom: 0;
+    font-weight: bold;
+    font-size: 16px;
+    padding: 5px;
+    background-color: rgba(238, 232, 213, 0.5);
+    width: 150px;
+    height: 30px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: black;
+}
+
+.object .sprite_container {
+    margin: 0 auto;
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.object .sprite_container div {
+    position: absolute;
+}
+
+.transition > * {
+    vertical-align: middle;
+}
+
+.tech_tree {
+    margin: 0 auto;
+    width: 1140px;
+}
+
+.tech_tree .level_container {
+    display: flex;
+    flex-direction: row;
+}
+
+.tech_tree .level, .tech_tree .padding {
+    flex: 0 0 170px;
+    padding: 20px;
+}
+
+.tech_tree .level {
+    text-align: center;
+    color: #268bd2;
+}
+
+.tech_tree .level span {
+    font-size: 16px;
+}
+
+.tech_tree .level .num {
+    font-size: 80px;
+    font-weight: bold;
+}
+
+.tech_tree .objects {
+    flex: 0 1 800px;
+    border-bottom: 3px solid #073643;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 5px 0;
+}
+
+.tech_tree .level_container:last-child .objects {
+    border: none;
+}
+
+.tech_tree .level .object {
+    display: inline-block;
+    vertical-align: top;
+}
+
+.tech_tree .level:nth-child(2n) {
+    background: #888;
+}
+</style>
+<body>
+<div class="header">
+    <h1>One Hour One Life</h1>
+    <h2>Recipe Explorer</h2>
+</div>
+
+<div class="search_box">
+    <div class="input">
+        <input placeholder="Filter" type="text" id="search" autofocus>
+    </div>
+    <div class="categories">
+        <span class="all">All</span><span class="food">Food</span><span class="clothing">Clothing</span><span class="heat_source">Heat Source</span><span class="containers">Containers</span>
+    </div>
+</div>
+
+<div class="tech_tree">
+</div>
+
+<script type="text/javascript" src="index.js"></script>
+</body>
+</html>
