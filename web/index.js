@@ -154,12 +154,13 @@ function createObjectElement(obj, width, height) {
         transform += "translate(" + -spriteInfo[obj.sprites[i].id].anchorX + "px, " + -spriteInfo[obj.sprites[i].id].anchorY + "px)";
         img.style.transform = transform;
         if (obj.sprites[i].r != 1.0 || obj.sprites[i].g != 1.0 || obj.sprites[i].b != 1.0) {
-            var r = 255*obj.sprites[i].r;
-            var g = 255*obj.sprites[i].g;
-            var b = 255*obj.sprites[i].b;
+            var r = Math.floor(255*obj.sprites[i].r);
+            var g = Math.floor(255*obj.sprites[i].g);
+            var b = Math.floor(255*obj.sprites[i].b);
             img.style.backgroundColor = "rgb(" + r + ", " + g + ", " + b + ")";
             img.style.backgroundBlendMode = "multiply";
             img.style.mask = "url(sprites/" + spriteId + ".png)";
+            img.style["-webkit-mask"] = img.style.mask;
         }
         spriteContainer.appendChild(img);
     }
