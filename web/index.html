@@ -1,7 +1,6 @@
 <html>
 <head>
 <meta charset="UTF-8">
-</head>
 <style>
 /*
 darkest: #002b36;
@@ -221,22 +220,33 @@ body {
     background: #888;
 }
 </style>
+<title>Recipe Explorer - One Hour One Life</title>
+</head>
 <body>
 <div class="header">
     <h1>One Hour One Life</h1>
     <h2>Recipe Explorer</h2>
 </div>
 
-<div class="search_box">
-    <div class="input">
-        <input placeholder="Filter" type="text" id="search" autofocus>
+<div class="tech_tree_view">
+    <div class="search_box">
+        <div class="input">
+            <input placeholder="Filter" type="text" id="search" autofocus>
+        </div>
+        <div class="categories">
+            <span class="all">All</span><span class="food">Food</span><span class="clothing">Clothing</span><span class="heat_source">Heat Source</span><span class="containers">Containers</span>
+        </div>
     </div>
-    <div class="categories">
-        <span class="all">All</span><span class="food">Food</span><span class="clothing">Clothing</span><span class="heat_source">Heat Source</span><span class="containers">Containers</span>
+
+    <div class="tech_tree">
     </div>
 </div>
 
-<div class="tech_tree">
+<div class="recipe_view">
+    <div class="recipe">
+    </div>
+    <div class="tree">
+    </div>
 </div>
 
 <script type="text/javascript" src="index.js"></script>

@@ -1,17 +1,630 @@
+function DataLoader() {
+    this.callbacks = [];
+    this.data = {
+        maxBiome: 0,
+        transitions: [],
+        creationTransitions: [],
+        spriteInfo: [],
+        objects: [],
+        techTree: []
+    };
 
-var maxBiome = 0;
-var transitions = [];
-var objects = [];
-var spriteInfo = [];
-var techTree = [];
-var dataLoaded = false;
-var techTreeReady = false;
-var techTreeFilterCategory = null;
+    var xhr = new XMLHttpRequest();
+    xhr.addEventListener("load", function() {
+        this.parseFile(xhr.response);
+        this.postprocessData();
+        this.loaded = true;
+        this.triggerLoaded();
+    }.bind(this));
+    xhr.addEventListener("error", function() {
+        console.error("Oh no!");
+    });
+    xhr.open("GET", "data.txt");
+    xhr.setRequestHeader("Content-Type", "text/plain");
+    xhr.send();
+}
 
-var techTreeRender = null;
+DataLoader.prototype.addOnLoadCallback = function(func) {
+    if (this.loaded) {
+        func(this.data);
+    } else {
+        this.callbacks.push(func);
+    }
+};
 
-var searchEl = document.getElementById("search");
-var resultsEl = document.querySelector(".results");
+DataLoader.prototype.parseFile = function(body) {
+    var mode = "general";
+    var lines = body.split("\n");
+    var curObj = null;
+    for (var i = 0; i < lines.length; ++i) {
+        var line = lines[i];
+        if (mode == "general") {
+            if (line == "=====") {
+                mode = "transitions";
+                continue;
+            } else {
+                if (line.startsWith("maxBiome=")) {
+                    this.data.maxBiome = parseInt(line.slice(9), 10);
+                }
+            }
+        }
+        if (mode == "transitions") {
+            if (line == "=====") {
+                mode = "spriteInfo";
+                continue;
+            } else {
+                var parts = line.split(" ");
+                var transition = {
+                    actorId: parseInt(parts[0], 10),
+                    targetId: parseInt(parts[1], 10),
+                    newActorId: parseInt(parts[2], 10),
+                    newTargetId: parseInt(parts[3], 10),
+                    timer: parseInt(parts[4], 10),
+                    lastUseActor: parseInt(parts[5], 10),
+                    lastUseTarget: parseInt(parts[6], 10)
+                };
+                this.data.transitions.push(transition);
+            }
+        }
+        if (mode == "spriteInfo") {
+            if (line == "=====") {
+                mode = "objects";
+            } else {
+                var parts = line.split(" ");
+                var info = {
+                    width: parseInt(parts[1], 10),
+                    height: parseInt(parts[2], 10),
+                    centerX: parseInt(parts[3], 10),
+                    centerY: parseInt(parts[4], 10),
+                    anchorX: parseInt(parts[5], 10),
+                    anchorY: parseInt(parts[6], 10)
+                };
+
+                this.data.spriteInfo[parseInt(parts[0], 10)] = info;
+            }
+        }
+        if (mode == "objects") {
+            if (line == "=====") {
+                if (curObj) {
+                    this.data.objects[curObj.id] = curObj;
+                }
+                curObj = {
+                    id: -100,
+                    name: "",
+                    searchName: "",
+                    containSize: 0,
+                    biomes: [],
+                    categories: [],
+                    heat: 0,
+                    rValue: 0.0,
+                    food: 0,
+                    speed: 0.0,
+                    clothing: "n",
+                    numSlots: 0,
+                    pixHeight: 0,
+                    held: 0,
+                    sprites: []
+                };
+                for (var b = 0; b <= this.data.maxBiome; ++b) {
+                    curObj.biomes.push(0);
+                }
+            } else if (line.length > 0) {
+                if (line.startsWith("id=")) {
+                    curObj.id = parseInt(line.slice(3), 10);
+                } else if (line.startsWith("name=")) {
+                    curObj.name = line.slice(5);
+                    curObj.searchName = curObj.name.toLowerCase();
+                } else if (line.startsWith("containSize=")) {
+                    curObj.containSize = parseInt(line.slice(12));
+                } else if (line.startsWith("biomes=")) {
+                    var biomes = line.slice(7).split(",");
+                    for (var b = 0; b < biomes.length; ++b) {
+                        curObj.biomes[parseInt(biomes[b], 10)] = 1;
+                    }
+                } else if (line.startsWith("categories=")) {
+                    var cats = line.slice(11).split(",");
+                    for (var c = 0; c < cats.length; ++c) {
+                        curObj.categories.push(parseInt(cats[c], 10));
+                    }
+                } else if (line.startsWith("heat=")) {
+                    curObj.heat = parseInt(line.slice(5), 10);
+                } else if (line.startsWith("rValue=")) {
+                    curObj.rValue = parseFloat(line.slice(7));
+                } else if (line.startsWith("food=")) {
+                    curObj.food = parseInt(line.slice(5), 10);
+                } else if (line.startsWith("speed=")) {
+                    curObj.speed = parseFloat(line.slice(6));
+                } else if (line.startsWith("clothing=")) {
+                    curObj.clothing = line.slice(9);
+                } else if (line.startsWith("numSlots=")) {
+                    curObj.numSlots = parseInt(line.slice(9), 10);
+                } else if (line.startsWith("numSprites=")) {
+                    // Unused
+                } else if (line.startsWith("pixHeight=")) {
+                    curObj.pixHeight = parseInt(line.slice(10), 10);
+                } else if (line.startsWith("held=")) {
+                    curObj.held = parseInt(line.slice(5), 10);
+                } else if (line.startsWith("sprite=")){ 
+                    var parts = line.slice(7).split(",");
+                    var sprite = {
+                        id: parseInt(parts[0], 10),
+                        x: parseFloat(parts[1]),
+                        y: parseFloat(parts[2]),
+                        rot: parseFloat(parts[3]),
+                        hFlip: parseInt(parts[4], 10),
+                        parent: parseInt(parts[5], 10),
+                        r: parseFloat(parts[6]),
+                        g: parseFloat(parts[7]),
+                        b: parseFloat(parts[8])
+                    };
+                    curObj.sprites.push(sprite);
+                } else {
+                    console.error("Unknown param on line", i+1);
+                }
+            }
+        }
+    }
+};
+
+DataLoader.prototype.postprocessData = function() {
+    // Gather creation transitions
+    for (var i = 0; i < this.data.transitions.length; ++i) {
+        var t = this.data.transitions[i];
+        if (!([-2, -1, 0, t.actorId].includes(t.newActorId))) {
+            this.data.creationTransitions[t.newActorId] = (this.data.creationTransitions[t.newActorId] || []);
+            this.data.creationTransitions[t.newActorId].push([t.actorId, t.targetId, 0]);
+        }
+        if (!([-2, -1, 0, t.targetId].includes(t.newTargetId))) {
+            this.data.creationTransitions[t.newTargetId] = (this.data.creationTransitions[t.newTargetId] || []);
+            this.data.creationTransitions[t.newTargetId].push([t.actorId, t.targetId, 1]);
+        }
+    }
+
+    // Initialize tech tree
+    this.data.techTree[-1] = [];
+    this.data.techTree[0] = [];
+    var sortedIds = [-2, -1, 0];
+    var remaining = [];
+
+    for (var id = 0; id < this.data.objects.length; ++id) {
+        if (this.data.objects[id]) {
+            if (this.data.objects[id].biomes.includes(1)) {
+                this.data.techTree[0].push(id);
+                sortedIds.push(id);
+            } else if (!this.data.creationTransitions[id]) {
+                if (this.data.objects[id].name[0] != "@") {
+                    this.data.techTree[-1].push(id);
+                    sortedIds.push(id);
+                }
+            } else if (!sortedIds.includes(id)) {
+                remaining.push(id);
+            }
+        }
+    }
+
+    // TODO: Maybe transitions that only take time should be collapsed into the same tech level?
+    // Should waiting for a rabbit to come out really count as an additinal tech level??
+
+    // Build tech tree
+    var techLevel = 1;
+    while (remaining.length > 0) {
+        this.data.techTree[techLevel] = [];
+        var rest = [];
+        var newSortedIds = [];
+        for (var i = 0; i < remaining.length; ++i) {
+            var id = remaining[i];
+            var found = false;
+            var ct = this.data.creationTransitions[id];
+            if (ct) {
+                for (var t = 0; !found && t < ct.length; ++t) {
+                    if (sortedIds.includes(ct[t][0]) && sortedIds.includes(ct[t][1])) {
+                        this.data.techTree[techLevel].push(id);
+                        newSortedIds.push(id);
+                        if (this.data.objects[id].categories && this.data.objects[id].categories.length > 0) {
+                            for (var cat = 0; cat < this.data.objects[id].categories.length; ++cat) {
+                                newSortedIds.push(this.data.objects[id].categories[cat]);
+                            }
+                        }
+                        found = true;
+                    }
+                }
+
+                if (!found) {
+                    rest.push(id);
+                }
+            }
+        }
+        for (var i = 0; i < newSortedIds.length; ++i) {
+            if (!sortedIds.includes(newSortedIds[i])) {
+                sortedIds.push(newSortedIds[i]);
+            }
+        }
+        techLevel++;
+        var prevRemaining = remaining.length;
+        var currentRemaining = rest.length;
+        if (prevRemaining == currentRemaining) {
+            console.error("We're stuck");
+            debugger;
+        }
+        remaining = rest;
+    }
+
+    // Inherit biomes
+    var modified = true;
+    while (modified) {
+        modified = false;
+        for (var id = 0; id < this.data.objects.length; ++id) {
+            if (this.data.objects[id] && !this.data.objects[id].held && !this.data.objects[id].biomes.includes(1)) {
+                var ct = this.data.creationTransitions[id];
+                if (ct) {
+                    for (var t = 0; t < ct.length; ++t) {
+                        var objType = ct[t][2];
+                        var candidate = this.data.objects[ct[t][objType]];
+                        if (candidate && !candidate.held && candidate.biomes.includes(1)) {
+                            for (var b = 0; b <= this.data.maxBiome; ++b) {
+                                this.data.objects[id].biomes[b] |= candidate.biomes[b];
+                            }
+                            modified = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+};
+
+DataLoader.prototype.triggerLoaded = function() {
+    for (var i = 0; i < this.callbacks.length; ++i) {
+        this.callbacks[i](this.data);
+    }
+
+    this.callbacks = [];
+};
+
+function Page() {
+    this.techTreeViewContainer = document.querySelector(".tech_tree_view");
+    this.recipeViewContainer = document.querySelector(".recipe_view");
+    this.data = null;
+
+    this.techTreeView = new TechTreeView(this.techTreeViewContainer, this.onQueryChanged.bind(this), this.onObjectSelected.bind(this));
+    this.recipeView = new RecipeView(this.recipeViewContainer, this.onRecipeStateChanged.bind(this));
+
+    this.navigateToHash();
+
+    window.addEventListener("popstate", this.onPopState.bind(this));
+}
+
+Page.prototype.setData = function(data) {
+    this.data = data;
+    this.techTreeView.setData(data);
+};
+
+Page.prototype.onQueryChanged = function(query) {
+    history.replaceState(null, null, "#q=" + encodeURIComponent(query));
+};
+
+Page.prototype.onObjectSelected = function(id) {
+    history.replaceState({ desiredScrollPos: window.scrollY }, null, null);
+    var state = this.recipeView.startRecipe(id);
+    this.showRecipe();
+    history.pushState(null, null, "#r=" + state);
+};
+
+Page.prototype.onRecipeStateChanged = function(state) {
+    history.replaceState(null, null, "#r=" + encodeURIComponent(state));
+};
+
+Page.prototype.showTechTree = function() {
+    this.techTreeViewContainer.style.display = "block";
+    this.recipeViewContainer.style.display = "none";
+};
+
+Page.prototype.showRecipe = function() {
+    this.techTreeViewContainer.style.display = "none";
+    this.recipeViewContainer.style.display = "block";
+};
+
+Page.prototype.navigateToHash = function() {
+    var hash = location.hash;
+    var found = false;
+    if (hash && hash.length > 0) {
+        if (hash[0] == "#") {
+            hash = hash.slice(1);
+        }
+        if (hash.startsWith("q=")) {
+            this.techTreeView.setQuery(decodeURIComponent(hash.slice(2)));
+            this.showTechTree();
+            found = true;
+        } else if (hash.startsWith("r=")){
+            this.recipeView.setState(decodeURIComponent(hash.slice(2)));
+            this.showRecipe();
+            found = true;
+        }
+    }
+    if (!found) {
+        this.techTreeView.reset();
+        this.showTechTree();
+    }
+};
+
+Page.prototype.onPopState = function(ev) {
+    var desiredScrollPos = ev.state ? ev.state.desiredScrollPos : null;
+    this.navigateToHash();
+    if (desiredScrollPos) {
+        window.scrollTo(0, desiredScrollPos);
+    }
+};
+
+function TechTreeView(container, onQueryChanged, onSelected) {
+    this.container = container;
+    this.onQueryChanged = onQueryChanged;
+    this.onSelected = onSelected;
+    this.data = null;
+    this.renderData = null;
+
+    this.query = "";
+    this.category = "all";
+
+    this.searchEl = container.querySelector("#search");
+    this.techTreeEl = container.querySelector(".tech_tree");
+    this.categoriesContainerEl = container.querySelector(".categories");
+
+    this.levelElPrototype = document.createElement("DIV");
+    this.levelElPrototype.classList.add("level_container");
+
+    var levelLabelPrototype = document.createElement("DIV");
+    levelLabelPrototype.classList.add("level");
+    var levelLabelSpanPrototype = document.createElement("SPAN");
+    levelLabelSpanPrototype.textContent = "LEVEL";
+    levelLabelPrototype.appendChild(levelLabelSpanPrototype);
+    var levelLabelNumPrototype = document.createElement("DIV");
+    levelLabelNumPrototype.classList.add("num");
+    levelLabelPrototype.appendChild(levelLabelNumPrototype);
+    this.levelElPrototype.appendChild(levelLabelPrototype);
+
+    var levelObjectsContainerPrototype = document.createElement("DIV");
+    levelObjectsContainerPrototype.classList.add("objects");
+    this.levelElPrototype.appendChild(levelObjectsContainerPrototype);
+
+    var levelPaddingPrototype = document.createElement("DIV");
+    levelPaddingPrototype.classList.add("padding");
+    this.levelElPrototype.appendChild(levelPaddingPrototype);
+
+    this.searchEl.addEventListener("input", this.onSearchInput.bind(this));
+    this.categoriesContainerEl.addEventListener("click", this.onCategorySelected.bind(this));
+
+    this.reset();
+}
+
+TechTreeView.prototype.reset = function() {
+    this.category = "all";
+    this.updateCategoryUI();
+    this.query = "";
+    this.searchEl.value = "";
+};
+
+TechTreeView.prototype.setQuery = function(query) {
+    this.category = query.slice(0, query.indexOf("!"));
+    this.query = query.slice(query.indexOf("!") + 1);
+    this.searchEl.value = this.query;
+    this.searchEl.focus();
+    this.searchEl.select();
+    this.updateCategoryUI();
+    this.runSearch();
+};
+
+TechTreeView.prototype.setCategory = function(cat) {
+    this.category = cat;
+    this.updateCategoryUI();
+    this.triggerQueryChanged();
+    this.runSearch();
+};
+
+TechTreeView.prototype.setData = function(data) {
+    this.data = data;
+    this.runSearch();
+};
+
+TechTreeView.prototype.onSearchInput = function(ev) {
+    this.query = this.searchEl.value.trim().toLowerCase();
+    this.triggerQueryChanged();
+    this.runSearch();
+};
+
+TechTreeView.prototype.onCategorySelected = function(ev) {
+    var el = ev.target;
+    var found = false;
+    while (el && el != document.body) {
+        if (el.parentElement == this.categoriesContainerEl) {
+            found = true;
+            break;
+        } else {
+            el = el.parentElement;
+        }
+    }
+
+    if (found) {
+        this.setCategory(el.classList.item(0));
+    }
+};
+
+TechTreeView.prototype.onTechTreeClick = function(ev) {
+    var el = ev.target;
+    var found = false;
+    while (el && el != document.body) {
+        if (el.getAttribute("data-obj-id")) {
+            found = true;
+            break;
+        } else {
+            el = el.parentElement;
+        }
+    }
+
+    if (found) {
+        this.triggerSelected(el.getAttribute("data-obj-id"));
+    }
+};
+
+TechTreeView.prototype.triggerQueryChanged = function() {
+    if (this.onQueryChanged) {
+        this.onQueryChanged(this.category + "!" + this.query);
+    }
+};
+
+TechTreeView.prototype.triggerSelected = function(id) {
+    if (this.onSelected) {
+        this.onSelected(id);
+    }
+};
+
+TechTreeView.prototype.updateCategoryUI = function() {
+    var catEls = this.categoriesContainerEl.children;
+    for (var i = 0; i < catEls.length; ++i) {
+        if (catEls[i].classList.contains(this.category)) {
+            catEls[i].classList.add("active");
+        } else {
+            catEls[i].classList.remove("active");
+        }
+    }
+};
+
+TechTreeView.prototype.runSearch = function() {
+    if (this.data) {
+        var techTreeToRender = [];
+        for (var i = -1; i < this.data.techTree.length; ++i) {
+            var results = [];
+            for (var j = 0; j < this.data.techTree[i].length; ++j) {
+                var obj = this.data.objects[this.data.techTree[i][j]];
+                var pass = false;
+                if (this.query.length == 0 || obj.searchName.includes(this.query)) {
+                    if (this.category == "all") {
+                        pass = true;
+                    } else if (this.category == "food") {
+                        pass = obj.food > 0;
+                    } else if (this.category == "heat_source") {
+                        pass = obj.heat > 0;
+                    } else if (this.category == "clothing") {
+                        pass = (obj.clothing != "n" && obj.rValue > 0);
+                    } else if (this.category == "containers") {
+                        pass = obj.numSlots > 0;
+                    }
+                }
+                if (pass) {
+                    results.push(obj.id);
+                }
+            }
+            if (results.length > 0) {
+                techTreeToRender.push([i, results]);
+            }
+        }
+
+        var diff = !this.renderData;
+        if (!diff) {
+            if (this.renderData.toRender.length == techTreeToRender.length) {
+                for (var i = 0; !diff && i < techTreeToRender.length; ++i) {
+                    diff = (this.renderData.toRender[i][1].length != techTreeToRender[i][1].length);
+                }
+            } else {
+                diff = true;
+            }
+        }
+
+
+        if (diff) {
+            var newTechTreeEl = this.techTreeEl.cloneNode(false);
+            this.techTreeEl.parentElement.insertBefore(newTechTreeEl, this.techTreeEl);
+            this.techTreeEl.parentElement.removeChild(this.techTreeEl);
+            this.techTreeEl = newTechTreeEl;
+            this.techTreeEl.addEventListener("click", this.onTechTreeClick.bind(this));
+
+            if (this.renderData && this.renderData.rafHandle) {
+                cancelAnimationFrame(this.renderData.rafHandle);
+                this.renderData.rafHandle = null;
+            }
+            this.renderData = {
+                toRender: techTreeToRender,
+                levelIdx: 0,
+                objIdx: 0,
+                curLevelEl: null,
+                rafHandle: null
+            };
+            this.render();
+        }
+    }
+};
+
+TechTreeView.prototype.render = function() {
+    var startTime = performance.now();
+    var done = false;
+    while (!done && (performance.now() - startTime) < 1) {
+        done = this.renderStep();
+    }
+    if (!done) {
+        this.renderData.rafHandle = requestAnimationFrame(this.render.bind(this));
+    } else {
+        this.renderData.rafHandle = null;
+    }
+};
+
+TechTreeView.prototype.renderStep = function() {
+    if (this.renderData.levelIdx < this.renderData.toRender.length) {
+        if (this.renderData.curLevelEl) {
+            var objIds = this.renderData.toRender[this.renderData.levelIdx][1];
+            while (this.renderData.objIdx < objIds.length) {
+                var objId = objIds[this.renderData.objIdx++];
+                this.renderData.curLevelEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[objId], 150, 120));
+                if (this.renderData.objIdx == objIds.length) {
+                    this.renderData.levelIdx++;
+                    this.renderData.objIdx = 0;
+                    this.renderData.curLevelEl = null;
+                    return this.renderData.levelIdx == this.renderData.toRender.length;
+                }
+            }
+        } else {
+            var levelEl = this.levelElPrototype.cloneNode(true);
+            var levelNum = this.renderData.toRender[this.renderData.levelIdx][0];
+            levelEl.querySelector(".num").textContent = levelNum
+            if (levelNum == -1) {
+                levelEl.querySelector(".padding").textContent = "These objects cannot be made and they do not spawn on the map.";
+            } else if (levelNum == 0) {
+                levelEl.querySelector(".padding").textContent = "These objects cannot be made, but they spawn on the map. All other objects are made from these.";
+            }
+            this.renderData.curLevelEl = levelEl.querySelector(".objects");
+            this.techTreeEl.appendChild(levelEl);
+            return false;
+        }
+    } else {
+        return true;
+    }
+};
+
+function RecipeView(container, onStateChanged) {
+    this.container = container;
+    this.recipeEl = container.querySelector(".recipe");
+    this.treeEl = container.querySelector(".tree");
+    this.onStateChanged = onStateChanged;
+    this.objectiveId = null;
+};
+
+RecipeView.prototype.startRecipe = function(id) {
+    this.objectiveId = id;
+    return this.getState();
+};
+
+RecipeView.prototype.setState = function(state) {
+    this.objectiveId = parseInt(state, 10);
+};
+
+RecipeView.prototype.getState = function() {
+    return this.objectiveId;
+};
+
+RecipeView.prototype.triggerStateChanged = function() {
+    if (this.onStateChanged) {
+        var state = this.getState();
+        this.onStateChanged(state);
+    }
+};
 
 var objectPrototype = document.createElement("DIV");
 objectPrototype.classList.add("object");
@@ -43,28 +656,8 @@ var nameEl = document.createElement("SPAN");
 nameEl.classList.add("name");
 objectPrototype.appendChild(nameEl);
 
-var techTreeLevelPrototype = document.createElement("DIV");
-techTreeLevelPrototype.classList.add("level_container");
 
-var techTreeLevelLabelPrototype = document.createElement("DIV");
-techTreeLevelLabelPrototype.classList.add("level");
-var techTreeLevelLabelSpanPrototype = document.createElement("SPAN");
-techTreeLevelLabelSpanPrototype.textContent = "LEVEL";
-techTreeLevelLabelPrototype.appendChild(techTreeLevelLabelSpanPrototype);
-var techTreeLevelLabelNumPrototype = document.createElement("DIV");
-techTreeLevelLabelNumPrototype.classList.add("num");
-techTreeLevelLabelPrototype.appendChild(techTreeLevelLabelNumPrototype);
-techTreeLevelPrototype.appendChild(techTreeLevelLabelPrototype);
-
-var techTreeLevelObjectsContainerPrototype = document.createElement("DIV");
-techTreeLevelObjectsContainerPrototype.classList.add("objects");
-techTreeLevelPrototype.appendChild(techTreeLevelObjectsContainerPrototype);
-
-var techTreeLevelPaddingPrototype = document.createElement("DIV");
-techTreeLevelPaddingPrototype.classList.add("padding");
-techTreeLevelPrototype.appendChild(techTreeLevelPaddingPrototype);
-
-function getSpritePos(obj, idx) {
+function getSpritePos(spriteInfo, obj, idx) {
     var id = obj.sprites[idx].id;
     var result = {
         x: obj.sprites[idx].x - spriteInfo[id].centerX,
@@ -74,9 +667,10 @@ function getSpritePos(obj, idx) {
     return result;
 }
 
-function createObjectElement(obj, width, height) {
+function createObjectElement(spriteInfo, obj, width, height) {
     var el = objectPrototype.cloneNode(true);
     el.setAttribute("title", obj.name);
+    el.setAttribute("data-obj-id", obj.id);
     var biomeEls = el.querySelector(".biomes").children;
     for (var i = 0; i < biomeEls.length; ++i) {
         if (obj.biomes[i]) {
@@ -94,7 +688,7 @@ function createObjectElement(obj, width, height) {
     for (var i = 0; i < obj.sprites.length; ++i) {
         var w = spriteInfo[obj.sprites[i].id].width;
         var h = spriteInfo[obj.sprites[i].id].height;
-        var pos = getSpritePos(obj, i);
+        var pos = getSpritePos(spriteInfo, obj, i);
         pos.x += (obj.sprites[i].hFlip ? 1 : -1) * spriteInfo[obj.sprites[i].id].anchorX;
         pos.y += spriteInfo[obj.sprites[i].id].anchorY;
         minX = Math.min(pos.x, minX);
@@ -143,7 +737,7 @@ function createObjectElement(obj, width, height) {
         img.style.backgroundImage = "url(sprites/" + spriteId + ".png)";
         img.style.width = spriteInfo[spriteId].width;
         img.style.height = spriteInfo[spriteId].height;
-        var pos = getSpritePos(obj, i);
+        var pos = getSpritePos(spriteInfo, obj, i);
         img.style.left = -minX + paddingX + pos.x + "px";
         img.style.bottom = -minY + paddingY + pos.y + "px";
         var transform = "";
@@ -184,392 +778,9 @@ function prettyTimeString(seconds) {
     return result;
 }
 
-function techTreeSetCategory(cat) {
-    techTreeFilterCategory = cat;
-    var techTreeCategories = document.querySelectorAll(".search_box .categories span");
-    for (var i = 0; i < techTreeCategories.length; ++i) {
-        if (techTreeCategories[i].classList.contains(cat)) {
-            techTreeCategories[i].classList.add("active");
-        } else {
-            techTreeCategories[i].classList.remove("active");
-        }
-    }
-    runTechTreeSearch();
-}
 
-function runTechTreeSearch() {
-    if (techTreeReady) {
-        var query = searchEl.value.trim().toLowerCase();
-        var techTreeToRender = [];
-        for (var i = -1; i < techTree.length; ++i) {
-            var results = [];
-            for (var j = 0; j < techTree[i].length; ++j) {
-                var obj = objects[techTree[i][j]];
-                var pass = false;
-                if (query.length == 0 || obj.searchName.includes(query)) {
-                    if (techTreeFilterCategory == "all") {
-                        pass = true;
-                    } else if (techTreeFilterCategory == "food") {
-                        pass = obj.food > 0;
-                    } else if (techTreeFilterCategory == "heat_source") {
-                        pass = obj.heat > 0;
-                    } else if (techTreeFilterCategory == "clothing") {
-                        pass = (obj.clothing != "n" && obj.rValue > 0);
-                    } else if (techTreeFilterCategory == "containers") {
-                        pass = obj.numSlots > 0;
-                    }
-                }
-                if (pass) {
-                    results.push(obj.id);
-                }
-            }
-            if (results.length > 0) {
-                techTreeToRender.push([i, results]);
-            }
-        }
-
-        var diff = !techTreeRender;
-        if (!diff) {
-            if (techTreeRender.toRender.length == techTreeToRender.length) {
-                for (var i = 0; !diff && i < techTreeToRender.length; ++i) {
-                    diff = (techTreeRender.toRender[i][1].length != techTreeToRender[i][1].length);
-                }
-            } else {
-                diff = true;
-            }
-        }
-
-
-        if (diff) {
-            var techTreeEl = document.querySelector(".tech_tree");
-            var newTechTreeEl = techTreeEl.cloneNode(false);
-            techTreeEl.parentElement.insertBefore(newTechTreeEl, techTreeEl);
-            techTreeEl.parentElement.removeChild(techTreeEl);
-            techTreeEl = newTechTreeEl;
-
-            if (techTreeRender && techTreeRender.rafHandle) {
-                cancelAnimationFrame(techTreeRender.rafHandle);
-            }
-            techTreeRender = {
-                el: techTreeEl,
-                toRender: techTreeToRender,
-                levelIdx: 0,
-                objIdx: 0,
-                curLevelEl: null,
-                rafHandle: null
-            };
-            renderTechTree();
-        }
-    }
-}
-
-function renderTechTree() {
-    var startTime = performance.now();
-    var done = false;
-    while (!done && (performance.now() - startTime) < 1) {
-        done = techTreeRenderStep();
-    }
-    if (!done) {
-        techTreeRender.rafHandle = requestAnimationFrame(renderTechTree);
-    }
-}
-
-function techTreeRenderStep() {
-    if (techTreeRender.levelIdx < techTreeRender.toRender.length) {
-        if (techTreeRender.curLevelEl) {
-            var objIds = techTreeRender.toRender[techTreeRender.levelIdx][1];
-            while (techTreeRender.objIdx < objIds.length) {
-                var objId = objIds[techTreeRender.objIdx++];
-                techTreeRender.curLevelEl.appendChild(createObjectElement(objects[objId], 150, 120));
-                if (techTreeRender.objIdx == objIds.length) {
-                    techTreeRender.levelIdx++;
-                    techTreeRender.objIdx = 0;
-                    techTreeRender.curLevelEl = null;
-                    return techTreeRender.levelIdx == techTreeRender.toRender.length;
-                }
-            }
-        } else {
-            var levelEl = techTreeLevelPrototype.cloneNode(true);
-            var levelNum = techTreeRender.toRender[techTreeRender.levelIdx][0];
-            levelEl.querySelector(".num").textContent = levelNum
-            if (levelNum == -1) {
-                levelEl.querySelector(".padding").textContent = "These objects cannot be made and they do not spawn on the map.";
-            } else if (levelNum == 0) {
-                levelEl.querySelector(".padding").textContent = "These objects cannot be made, but they spawn on the map. All other objects are made from these.";
-            }
-            techTreeRender.curLevelEl = levelEl.querySelector(".objects");
-            techTreeRender.el.appendChild(levelEl);
-            return false;
-        }
-    } else {
-        return true;
-    }
-}
-
-function buildTechTree() {
-    techTree[-1] = [];
-    techTree[0] = [];
-    var sortedIds = [-2, -1, 0];
-    var remaining = [];
-
-    var creationTransitions = [];
-    for (var i = 0; i < transitions.length; ++i) {
-        var t = transitions[i];
-        if (!([-2, -1, 0, t.actorId].includes(t.newActorId))) {
-            creationTransitions[t.newActorId] = (creationTransitions[t.newActorId] || []);
-            creationTransitions[t.newActorId].push([t.actorId, t.targetId, 0]);
-        }
-        if (!([-2, -1, 0, t.targetId].includes(t.newTargetId))) {
-            creationTransitions[t.newTargetId] = (creationTransitions[t.newTargetId] || []);
-            creationTransitions[t.newTargetId].push([t.actorId, t.targetId, 1]);
-        }
-    }
-
-    for (var i = 0; i < objects.length; ++i) {
-        if (objects[i]) {
-            if (objects[i].biomes.includes(true)) {
-                techTree[0].push(objects[i].id);
-                sortedIds.push(objects[i].id);
-            } else if (!creationTransitions[objects[i].id]) {
-                if (objects[i].name[0] != "@") {
-                    techTree[-1].push(objects[i].id);
-                    sortedIds.push(objects[i].id);
-                }
-            } else if (!sortedIds.includes(objects[i].id)) {
-                remaining.push(objects[i].id);
-            }
-        }
-    }
-
-    // TODO: Maybe transitions that only take time should be collapsed into the same tech level?
-    // Should waiting for a rabbit to come out really count as an additinal tech level??
-    var techLevel = 1;
-    while (remaining.length > 0) {
-        techTree[techLevel] = [];
-        var rest = [];
-        var newSortedIds = [];
-        for (var i = 0; i < remaining.length; ++i) {
-            var id = remaining[i];
-            var found = false;
-            var ct = creationTransitions[id];
-            if (ct) {
-                for (var t = 0; t < ct.length; ++t) {
-                    if (!objects[id].held) {
-                        // This is really bad. We need a separate dependency crawl for the biomes.
-                        for (var b = 0; b <= maxBiome; ++b) {
-                            var objType = ct[t][2];
-                            if (objects[ct[t][objType]] && !objects[ct[t][objType]].held) {
-                                objects[id].biomes[b] |= objects[ct[t][objType]].biomes[b];
-                            }
-                        }
-                    }
-                    if (!found) {
-                        if (sortedIds.includes(ct[t][0]) && sortedIds.includes(ct[t][1])) {
-                            techTree[techLevel].push(id);
-                            newSortedIds.push(id);
-                            if (objects[id].categories && objects[id].categories.length > 0) {
-                                for (var cat = 0; cat < objects[id].categories.length; ++cat) {
-                                    newSortedIds.push(objects[id].categories[cat]);
-                                }
-                            }
-                            found = true;
-                        }
-                    }
-                }
-
-                if (!found) {
-                    rest.push(id);
-                }
-            }
-        }
-        for (var i = 0; i < newSortedIds.length; ++i) {
-            if (!sortedIds.includes(newSortedIds[i])) {
-                sortedIds.push(newSortedIds[i]);
-            }
-        }
-        techLevel++;
-        var prevRemaining = remaining.length;
-        var currentRemaining = rest.length;
-        if (prevRemaining == currentRemaining) {
-            console.error("We're stuck");
-            debugger;
-        }
-        remaining = rest;
-    }
-
-    techTreeReady = true;
-    runTechTreeSearch();
-}
-
-var categoryAll = document.querySelector(".search_box .categories .all");
-categoryAll.addEventListener("click", function(ev) {
-    techTreeSetCategory("all");
+var page = new Page();
+var dataLoader = new DataLoader();
+dataLoader.addOnLoadCallback(function(data) {
+    page.setData(data);
 });
-var categoryFood = document.querySelector(".search_box .categories .food");
-categoryFood.addEventListener("click", function(ev) {
-    techTreeSetCategory("food");
-});
-var categoryClothing = document.querySelector(".search_box .categories .clothing");
-categoryClothing.addEventListener("click", function(ev) {
-    techTreeSetCategory("clothing");
-});
-var categoryHeatSource = document.querySelector(".search_box .categories .heat_source");
-categoryHeatSource.addEventListener("click", function(ev) {
-    techTreeSetCategory("heat_source");
-});
-var categoryContainers = document.querySelector(".search_box .categories .containers");
-categoryContainers.addEventListener("click", function(ev) {
-    techTreeSetCategory("containers");
-});
-
-
-searchEl.addEventListener("input", function(ev) {
-    runTechTreeSearch();
-});
-
-techTreeSetCategory("all");
-
-var xhr = new XMLHttpRequest();
-xhr.addEventListener("load", function() {
-    var body = xhr.response;
-    var mode = "general";
-    var lines = body.split("\n");
-    var curObj = null;
-    for (var i = 0; i < lines.length; ++i) {
-        var line = lines[i];
-        if (mode == "general") {
-            if (line == "=====") {
-                mode = "transitions";
-                continue;
-            } else {
-                if (line.startsWith("maxBiome=")) {
-                    maxBiome = parseInt(line.slice(9), 10);
-                }
-            }
-        }
-        if (mode == "transitions") {
-            if (line == "=====") {
-                mode = "spriteInfo";
-                continue;
-            } else {
-                var parts = line.split(" ");
-                var transition = {
-                    actorId: parseInt(parts[0], 10),
-                    targetId: parseInt(parts[1], 10),
-                    newActorId: parseInt(parts[2], 10),
-                    newTargetId: parseInt(parts[3], 10),
-                    timer: parseInt(parts[4], 10),
-                    lastUseActor: parseInt(parts[5], 10),
-                    lastUseTarget: parseInt(parts[6], 10)
-                };
-                transitions.push(transition);
-            }
-        }
-        if (mode == "spriteInfo") {
-            if (line == "=====") {
-                mode = "objects";
-            } else {
-                var parts = line.split(" ");
-                var info = {
-                    width: parseInt(parts[1], 10),
-                    height: parseInt(parts[2], 10),
-                    centerX: parseInt(parts[3], 10),
-                    centerY: parseInt(parts[4], 10),
-                    anchorX: parseInt(parts[5], 10),
-                    anchorY: parseInt(parts[6], 10)
-                };
-
-                spriteInfo[parseInt(parts[0], 10)] = info;
-            }
-        }
-        if (mode == "objects") {
-            if (line == "=====") {
-                if (curObj) {
-                    objects[curObj.id] = curObj;
-                }
-                curObj = {
-                    id: -100,
-                    name: "",
-                    searchName: "",
-                    containSize: 0,
-                    biomes: [],
-                    categories: [],
-                    heat: 0,
-                    rValue: 0.0,
-                    food: 0,
-                    speed: 0.0,
-                    clothing: "n",
-                    numSlots: 0,
-                    pixHeight: 0,
-                    held: 0,
-                    sprites: []
-                };
-                for (var b = 0; b <= maxBiome; ++b) {
-                    curObj.biomes.push(false);
-                }
-            } else if (line.length > 0) {
-                if (line.startsWith("id=")) {
-                    curObj.id = parseInt(line.slice(3), 10);
-                } else if (line.startsWith("name=")) {
-                    curObj.name = line.slice(5);
-                    curObj.searchName = curObj.name.toLowerCase();
-                } else if (line.startsWith("containSize=")) {
-                    curObj.containSize = parseInt(line.slice(12));
-                } else if (line.startsWith("biomes=")) {
-                    var biomes = line.slice(7).split(",");
-                    for (var b = 0; b < biomes.length; ++b) {
-                        curObj.biomes[parseInt(biomes[b], 10)] = true;
-                    }
-                } else if (line.startsWith("categories=")) {
-                    var cats = line.slice(11).split(",");
-                    for (var c = 0; c < cats.length; ++c) {
-                        curObj.categories.push(parseInt(cats[c], 10));
-                    }
-                } else if (line.startsWith("heat=")) {
-                    curObj.heat = parseInt(line.slice(5), 10);
-                } else if (line.startsWith("rValue=")) {
-                    curObj.rValue = parseFloat(line.slice(7));
-                } else if (line.startsWith("food=")) {
-                    curObj.food = parseInt(line.slice(5), 10);
-                } else if (line.startsWith("speed=")) {
-                    curObj.speed = parseFloat(line.slice(6));
-                } else if (line.startsWith("clothing=")) {
-                    curObj.clothing = line.slice(9);
-                } else if (line.startsWith("numSlots=")) {
-                    curObj.numSlots = parseInt(line.slice(9), 10);
-                } else if (line.startsWith("numSprites=")) {
-                    // Unused
-                } else if (line.startsWith("pixHeight=")) {
-                    curObj.pixHeight = parseInt(line.slice(10), 10);
-                } else if (line.startsWith("held=")) {
-                    curObj.held = parseInt(line.slice(5), 10);
-                } else if (line.startsWith("sprite=")){ 
-                    var parts = line.slice(7).split(",");
-                    var sprite = {
-                        id: parseInt(parts[0], 10),
-                        x: parseFloat(parts[1]),
-                        y: parseFloat(parts[2]),
-                        rot: parseFloat(parts[3]),
-                        hFlip: parseInt(parts[4], 10),
-                        parent: parseInt(parts[5], 10),
-                        r: parseFloat(parts[6]),
-                        g: parseFloat(parts[7]),
-                        b: parseFloat(parts[8])
-                    };
-                    curObj.sprites.push(sprite);
-                } else {
-                    console.error("Unknown param on line", i+1);
-                }
-            }
-        }
-    }
-    dataLoaded = true;
-    buildTechTree();
-});
-xhr.addEventListener("error", function() {
-    console.error("Oh no!");
-});
-xhr.open("GET", "data.txt");
-xhr.setRequestHeader("Content-Type", "text/plain");
-xhr.send();
-
