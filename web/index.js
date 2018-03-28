@@ -1,3 +1,12 @@
+// TODO:
+// Recipe view:
+//   - Allow selection of specific object from category. (Maybe not??)
+//   - Highlight all steps that belong to the subtree of the currently hovered object.
+//   - Group ingredients.
+//   - Identify reusable ingredients/products.
+//   - Improve overall style.
+
+
 function DataLoader() {
     this.callbacks = [];
     this.data = {
@@ -103,6 +112,7 @@ DataLoader.prototype.parseFile = function(body) {
                     numSlots: 0,
                     pixHeight: 0,
                     held: 0,
+                    techLevel: -1,
                     sprites: []
                 };
                 for (var b = 0; b <= this.data.maxBiome; ++b) {
@@ -172,11 +182,11 @@ DataLoader.prototype.postprocessData = function() {
         var t = this.data.transitions[i];
         if (!([-2, -1, 0, t.actorId].includes(t.newActorId))) {
             this.data.creationTransitions[t.newActorId] = (this.data.creationTransitions[t.newActorId] || []);
-            this.data.creationTransitions[t.newActorId].push([t.actorId, t.targetId, 0]);
+            this.data.creationTransitions[t.newActorId].push([t.actorId, t.targetId, 0, i]);
         }
         if (!([-2, -1, 0, t.targetId].includes(t.newTargetId))) {
             this.data.creationTransitions[t.newTargetId] = (this.data.creationTransitions[t.newTargetId] || []);
-            this.data.creationTransitions[t.newTargetId].push([t.actorId, t.targetId, 1]);
+            this.data.creationTransitions[t.newTargetId].push([t.actorId, t.targetId, 1, i]);
         }
     }
 
@@ -190,6 +200,7 @@ DataLoader.prototype.postprocessData = function() {
         if (this.data.objects[id]) {
             if (this.data.objects[id].biomes.includes(1)) {
                 this.data.techTree[0].push(id);
+                this.data.objects[id].techLevel = 0;
                 sortedIds.push(id);
             } else if (!this.data.creationTransitions[id]) {
                 if (this.data.objects[id].name[0] != "@") {
@@ -219,10 +230,15 @@ DataLoader.prototype.postprocessData = function() {
                 for (var t = 0; !found && t < ct.length; ++t) {
                     if (sortedIds.includes(ct[t][0]) && sortedIds.includes(ct[t][1])) {
                         this.data.techTree[techLevel].push(id);
+                        this.data.objects[id].techLevel = techLevel;
                         newSortedIds.push(id);
                         if (this.data.objects[id].categories && this.data.objects[id].categories.length > 0) {
                             for (var cat = 0; cat < this.data.objects[id].categories.length; ++cat) {
-                                newSortedIds.push(this.data.objects[id].categories[cat]);
+                                var catId = this.data.objects[id].categories[cat];
+                                if (this.data.objects[catId].techLevel == -1) {
+                                    this.data.objects[catId].techLevel = techLevel;
+                                }
+                                newSortedIds.push(catId);
                             }
                         }
                         found = true;
@@ -297,6 +313,7 @@ function Page() {
 Page.prototype.setData = function(data) {
     this.data = data;
     this.techTreeView.setData(data);
+    this.recipeView.setData(data);
 };
 
 Page.prototype.onQueryChanged = function(query) {
@@ -461,7 +478,7 @@ TechTreeView.prototype.onTechTreeClick = function(ev) {
     }
 
     if (found) {
-        this.triggerSelected(el.getAttribute("data-obj-id"));
+        this.triggerSelected(parseInt(el.getAttribute("data-obj-id"), 10));
     }
 };
 
@@ -572,7 +589,7 @@ TechTreeView.prototype.renderStep = function() {
             var objIds = this.renderData.toRender[this.renderData.levelIdx][1];
             while (this.renderData.objIdx < objIds.length) {
                 var objId = objIds[this.renderData.objIdx++];
-                this.renderData.curLevelEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[objId], 150, 120));
+                this.renderData.curLevelEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[objId], 150, 150));
                 if (this.renderData.objIdx == objIds.length) {
                     this.renderData.levelIdx++;
                     this.renderData.objIdx = 0;
@@ -600,29 +617,374 @@ TechTreeView.prototype.renderStep = function() {
 
 function RecipeView(container, onStateChanged) {
     this.container = container;
-    this.recipeEl = container.querySelector(".recipe");
+    this.targetObjectContainer = container.querySelector(".target_object .object_container");
+    this.ingredientsEl = container.querySelector(".ingredients");
+    this.stepsEl = container.querySelector(".steps");
     this.treeEl = container.querySelector(".tree");
+    this.overEl = container.querySelector(".over");
     this.onStateChanged = onStateChanged;
-    this.objectiveId = null;
+    this.recipeTree = null;
+    this.currentNode = null;
+    this.data = null;
+};
+
+RecipeView.prototype.getTextForStep = function(step) {
+    var actor = step.transitions[step.selected][0];
+    var target = step.transitions[step.selected][1];
+    var text = {
+        preActor: "Use ",
+        preTarget: " with ",
+        preResult: " to create "
+    };
+
+    if (actor.id == -2) {
+        text.preActor = "";
+        text.preTarget = " ";
+    } else if (actor.id == -1) {
+        text.preActor = "Wait ";
+        text.preTarget = " until ";
+        text.preResult = " becomes ";
+    } else if (actor.id == 0) {
+        text.preActor = "Use your ";
+        text.preTarget = " on ";
+    } else if (target.id == 0) {
+        text.preTarget = " on ";
+    }
+
+    return text;
+};
+
+RecipeView.prototype.getNodeName = function(node) {
+    var id = node.id;
+    var type = node.type;
+    var name = "";
+    if (id > 0 && this.data && this.data.objects[id]) {
+        name = this.data.objects[id].name;
+    } else if (id == -2 && type == "actor") {
+        name = "Touch";
+    } else if (id == -2 && type == "target") {
+        name = "Nothing";
+    } else if (id == -1 && type == "actor") {
+        if (node.transitionIdx >= 0) {
+            var time = this.data.transitions[node.transitionIdx].timer;
+        }
+        name = prettyTimeString(time);
+    } else if (id == -1 && type == "target") {
+        name = "Remove";
+    } else if (id == 0 && type == "actor") {
+        name = "Hand";
+    } else if (id == 0 && type == "target") {
+        name = "Person";
+    } else {
+        name = "Unknown";
+    }
+
+    return name;
 };
 
 RecipeView.prototype.startRecipe = function(id) {
-    this.objectiveId = id;
+    this.recipeTree = this.makeNode(id);
+    if (this.data) {
+        this.targetObjectContainer.innerHTML = "";
+        this.targetObjectContainer.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[id], 200, 200, "long"));
+        this.populateTransitions(this.recipeTree);
+        this.updateRecipeUI();
+    }
+
     return this.getState();
 };
 
+RecipeView.prototype.setData = function(data) {
+    this.data = data;
+    if (this.pendingState) {
+        this.setState(this.pendingState);
+    }
+};
+
 RecipeView.prototype.setState = function(state) {
-    this.objectiveId = parseInt(state, 10);
+    var applyState = (function(parts, node) {
+        var selection = parts.shift();
+        if (selection != "_") {
+            selection = selection.split("_");
+            if (node) {
+                this.populateTransitions(node);
+                for (var i = 0; i < node.transitions.length; ++i) {
+                    var t = node.transitions[i];
+                    if (t[0].id == parseInt(selection[0], 10) && t[1].id == parseInt(selection[1], 10)) {
+                        node.selected = i;
+                        break;
+                    }
+                }
+            }
+            if (node && node.selected != -1) {
+                applyState(parts, node.transitions[node.selected][0]);
+                applyState(parts, node.transitions[node.selected][1]);
+            } else {
+                applyState(parts, null);
+                applyState(parts, null);
+            }
+        }
+    }).bind(this);
+    if (this.data) {
+        var parts = state.split('|');
+        var root = parts.shift();
+        this.startRecipe(parseInt(root, 10));
+        applyState(parts, this.recipeTree);
+        this.updateRecipeUI();
+        this.pendingState = null;
+    } else {
+        this.pendingState = state;
+    }
 };
 
 RecipeView.prototype.getState = function() {
-    return this.objectiveId;
+    var state = [];
+    function buildState(state, node) {
+        if (node.selected != -1) {
+            var t = node.transitions[node.selected];
+            state.push(t[0].id + "_" + t[1].id);
+            buildState(state, t[0]);
+            buildState(state, t[1]);
+        } else {
+            state.push('_');
+        }
+    }
+    if (this.recipeTree) {
+        state.push(this.recipeTree.id);
+        buildState(state, this.recipeTree);
+    }
+    return state.join("|");
 };
 
 RecipeView.prototype.triggerStateChanged = function() {
     if (this.onStateChanged) {
         var state = this.getState();
         this.onStateChanged(state);
+    }
+};
+
+RecipeView.prototype.makeNode = function(id, type, transitionIdx, transitions, selected) {
+    return {
+        id: id,
+        type: type,
+        transitionIdx: (transitionIdx === undefined ? -1 : transitionIdx),
+        transitions: (transitions || []),
+        selected: (selected === undefined ? -1 : selected)
+    };
+};
+
+RecipeView.prototype.populateTransitions = function(node) {
+    if (node.transitions.length == 0) {
+        var ct = this.data.creationTransitions[node.id];
+        if (ct) {
+            for (var i = 0; i < ct.length; ++i) {
+                node.transitions.push([
+                    this.makeNode(ct[i][0], "actor", ct[i][3]),
+                    this.makeNode(ct[i][1], "target", ct[i][3])
+                ]);
+            }
+        } else if (this.data.objects[node.id] && this.data.objects[node.id].name[0] == "@") {
+            for (var id = 0; id < this.data.objects.length; ++id) {
+                if (this.data.objects[id] && this.data.objects[id].categories.includes(node.id)) {
+                    ct = this.data.creationTransitions[id];
+                    if (ct) {
+                        for (var i = 0; i < ct.length; ++i) {
+                            node.transitions.push([
+                                this.makeNode(ct[i][0], "actor", ct[i][3]),
+                                this.makeNode(ct[i][1], "target", ct[i][3])
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+        if (node.transitions.length > 0) {
+            node.transitions.sort(function(a, b) {
+                var maxA = Math.max((a[0].id > 0 ? this.data.objects[a[0].id].techLevel : -1), (a[1].id > 0 ? this.data.objects[a[1].id].techLevel : -1));
+                var maxB = Math.max((b[0].id > 0 ? this.data.objects[b[0].id].techLevel : -1), (b[1].id > 0 ? this.data.objects[b[1].id].techLevel : -1));
+                return maxA - maxB;
+            }.bind(this));
+        }
+    }
+};
+
+RecipeView.prototype.modifyNode = function(el, node) {
+    this.populateTransitions(node);
+    this.currentNode = node;
+
+    var newTreeEl = this.treeEl.cloneNode(false);
+    this.treeEl.parentElement.insertBefore(newTreeEl, this.treeEl);
+    this.treeEl.parentElement.removeChild(this.treeEl);
+    this.treeEl = newTreeEl;
+
+    var headerEl = document.createElement("DIV");
+    headerEl.classList.add("tree_header");
+
+    headerEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[node.id], 120, 120, "none"));
+    this.treeEl.appendChild(headerEl);
+
+    var gotIt = document.createElement("DIV");
+    gotIt.textContent = "Already got it!";
+    gotIt.classList.add("transition");
+    gotIt.classList.add("got_it");
+    if (node.selected == -1) {
+        gotIt.classList.add("selected");
+    }
+    gotIt.addEventListener("click", this.selectNodeChild.bind(this, -1));
+    this.treeEl.appendChild(gotIt);
+
+    for (var i = 0; i < node.transitions.length; ++i) {
+        var t = node.transitions[i];
+        var transitionEl = document.createElement("DIV");
+        transitionEl.classList.add("transition");
+        if (node.selected == i) {
+            transitionEl.classList.add("selected");
+        }
+        transitionEl.appendChild(createObjectElementById(this.data.spriteInfo, this.data.objects, t[0].id, "actor", this.data.transitions[t[0].transitionIdx].timer, 120, 120));
+        transitionEl.appendChild(document.createTextNode("+"));
+        transitionEl.appendChild(createObjectElementById(this.data.spriteInfo, this.data.objects, t[1].id, "target", null, 120, 120));
+        transitionEl.addEventListener("click", this.selectNodeChild.bind(this, i));
+        this.treeEl.appendChild(transitionEl);
+    }
+
+    var centerX = el.offsetLeft + el.offsetWidth/2;
+    var bottomY = el.offsetTop + el.offsetHeight;
+    this.treeEl.style.top = Math.floor(bottomY) + 13 + "px";
+    this.treeEl.style.display = "block";
+    this.treeEl.style.left = Math.floor(centerX - this.treeEl.offsetWidth/2) + "px";
+
+    this.updateRecipeUI();
+};
+
+RecipeView.prototype.selectNodeChild = function(idx) {
+    this.currentNode.selected = idx;
+    var transitionEls = this.treeEl.querySelectorAll(".transition");
+    for (var i = 0; i < transitionEls.length; ++i) {
+        if (i-1 == idx) {
+            transitionEls[i].classList.add("selected");
+        } else {
+            transitionEls[i].classList.remove("selected");
+        }
+    }
+
+    this.currentNode = null;
+    this.treeEl.style.display = "none";
+    this.updateRecipeUI();
+    this.triggerStateChanged();
+};
+
+RecipeView.prototype.updateRecipeUI = function() {
+    var ingredients = [];
+    var steps = [];
+    this.processNode(ingredients, steps, this.recipeTree);
+
+    ingredients.sort(function(a, b) {
+        var compare = this.data.objects[a.id].techLevel - this.data.objects[b.id].techLevel;
+        if (compare == 0) {
+            compare = this.data.objects[a.id].name.localeCompare(this.data.objects[b.id].name);
+        }
+        return compare;
+    }.bind(this));
+
+    var newIngredientsEl = this.ingredientsEl.cloneNode(false);
+    this.ingredientsEl.parentElement.insertBefore(newIngredientsEl, this.ingredientsEl);
+    this.ingredientsEl.parentElement.removeChild(this.ingredientsEl);
+    this.ingredientsEl = newIngredientsEl;
+
+    var newStepsEl = this.stepsEl.cloneNode(false);
+    this.stepsEl.parentElement.insertBefore(newStepsEl, this.stepsEl);
+    this.stepsEl.parentElement.removeChild(this.stepsEl);
+    this.stepsEl = newStepsEl;
+    for (var i = 0; i < ingredients.length; ++i) {
+        var node = ingredients[i];
+        var ingredientEl = document.createElement("LI");
+        ingredientEl.classList.add("ingredient");
+        ingredientEl.textContent = this.getNodeName(node);
+        this.ingredientsEl.appendChild(ingredientEl);
+    }
+
+    if (steps.length == 0) {
+        var stepEl = document.createElement("LI");
+        stepEl.classList.add("step");
+        stepEl.appendChild(document.createTextNode("Click to edit recipe: "));
+        var resultEl = document.createElement("A");
+        resultEl.setAttribute("href", "javascript:;");
+        resultEl.classList.add("step_ingredient");
+        if (this.recipeTree == this.currentNode) {
+            resultEl.classList.add("current");
+        }
+        resultEl.classList.add("result");
+        resultEl.classList.add("final");
+        resultEl.textContent = this.getNodeName(this.recipeTree);
+        resultEl.addEventListener("click", this.modifyNode.bind(this, resultEl, this.recipeTree));
+        stepEl.appendChild(resultEl);
+        this.stepsEl.appendChild(stepEl);
+    } else {
+        for (var i = 0; i < steps.length; ++i) {
+            var node = steps[i];
+            var stepText = this.getTextForStep(node);
+            var children = node.transitions[node.selected];
+            var stepEl = document.createElement("LI");
+            stepEl.classList.add("step");
+            stepEl.appendChild(document.createTextNode(stepText.preActor));
+            var actorEl = document.createElement("A");
+            actorEl.setAttribute("href", "javascript:;");
+            actorEl.classList.add("step_ingredient");
+            if (children[0] == this.currentNode) {
+                actorEl.classList.add("current");
+            }
+            actorEl.classList.add("actor");
+            actorEl.textContent = this.getNodeName(children[0]);
+            if (children[0].id > 0) {
+                actorEl.addEventListener("click", this.modifyNode.bind(this, actorEl, children[0]));
+            } else {
+                actorEl.classList.add("unclickable");
+            }
+            stepEl.appendChild(actorEl);
+            stepEl.appendChild(document.createTextNode(stepText.preTarget));
+            var targetEl = document.createElement("A");
+            targetEl.setAttribute("href", "javascript:;");
+            targetEl.classList.add("step_ingredient");
+            if (children[1] == this.currentNode) {
+                targetEl.classList.add("current");
+            }
+            targetEl.classList.add("target");
+            targetEl.textContent = this.getNodeName(children[1]);
+            if (children[1].id > 0) {
+                targetEl.addEventListener("click", this.modifyNode.bind(this, targetEl, children[1]));
+            } else {
+                targetEl.classList.add("unclickable");
+            }
+            stepEl.appendChild(targetEl);
+            stepEl.appendChild(document.createTextNode(stepText.preResult));
+            var resultEl = document.createElement("A");
+            resultEl.setAttribute("href", "javascript:;");
+            resultEl.classList.add("step_ingredient");
+            if (node == this.currentNode) {
+                resultEl.classList.add("current");
+            }
+            resultEl.classList.add("result");
+            if (node == this.recipeTree) {
+                resultEl.classList.add("final");
+            }
+            resultEl.textContent = this.getNodeName(node);
+            resultEl.addEventListener("click", this.modifyNode.bind(this, resultEl, node));
+            stepEl.appendChild(resultEl);
+            this.stepsEl.appendChild(stepEl);
+        }
+    }
+};
+
+RecipeView.prototype.processNode = function(ingredients, steps, node) {
+    if (node.selected == -1) {
+        if (node.id > 0) {
+            ingredients.push(node);
+        }
+    } else {
+        var children = node.transitions[node.selected];
+        this.processNode(ingredients, steps, children[0]);
+        this.processNode(ingredients, steps, children[1]);
+        steps.push(node);
     }
 };
 
@@ -657,6 +1019,50 @@ nameEl.classList.add("name");
 objectPrototype.appendChild(nameEl);
 
 
+function createObjectElementById(spriteInfo, objects, id, type, time, width, height) {
+    var result = null;
+    if (id > 0 && objects[id]) {
+        result = createObjectElement(spriteInfo, objects[id], width, height);
+    } else if (id == -2 && type == "actor") {
+        result = objectPrototype.cloneNode(true);
+        result.querySelector(".name").textContent = "Bother";
+        result.querySelector(".sprite_container").style.width = width + "px";
+        result.querySelector(".sprite_container").style.height = (height-30) + "px";
+    } else if (id == -2 && type == "target") {
+        result = objectPrototype.cloneNode(true);
+        result.querySelector(".name").textContent = "Nothing";
+        result.querySelector(".sprite_container").style.width = width + "px";
+        result.querySelector(".sprite_container").style.height = (height-30) + "px";
+    } else if (id == -1 && type == "actor") {
+        result = objectPrototype.cloneNode(true);
+        var timeString = prettyTimeString(time);
+        result.querySelector(".name").textContent = timeString;
+        result.querySelector(".sprite_container").style.width = width + "px";
+        result.querySelector(".sprite_container").style.height = (height-30) + "px";
+    } else if (id == -1 && type == "target") {
+        result = objectPrototype.cloneNode(true);
+        result.querySelector(".name").textContent = "Remove";
+        result.querySelector(".sprite_container").style.width = width + "px";
+        result.querySelector(".sprite_container").style.height = (height-30) + "px";
+    } else if (id == 0 && type == "actor") {
+        result = objectPrototype.cloneNode(true);
+        result.querySelector(".name").textContent = "Pick up";
+        result.querySelector(".sprite_container").style.width = width + "px";
+        result.querySelector(".sprite_container").style.height = (height-30) + "px";
+    } else if (id == 0 && type == "target") {
+        result = objectPrototype.cloneNode(true);
+        result.querySelector(".name").textContent = "Person";
+        result.querySelector(".sprite_container").style.width = width + "px";
+        result.querySelector(".sprite_container").style.height = (height-30) + "px";
+    } else {
+        result = objectPrototype.cloneNode(true);
+        result.querySelector(".name").textContent = "Unknown";
+        result.querySelector(".sprite_container").style.width = width + "px";
+        result.querySelector(".sprite_container").style.height = (height-30) + "px";
+    }
+    return result;
+};
+
 function getSpritePos(spriteInfo, obj, idx) {
     var id = obj.sprites[idx].id;
     var result = {
@@ -667,7 +1073,10 @@ function getSpritePos(spriteInfo, obj, idx) {
     return result;
 }
 
-function createObjectElement(spriteInfo, obj, width, height) {
+function createObjectElement(spriteInfo, obj, width, height, nameType) {
+    if (height && nameType != "none") {
+        height -= 30;
+    }
     var el = objectPrototype.cloneNode(true);
     el.setAttribute("title", obj.name);
     el.setAttribute("data-obj-id", obj.id);
@@ -678,8 +1087,6 @@ function createObjectElement(spriteInfo, obj, width, height) {
         }
     }
 
-    var nameEl = el.querySelector(".name");
-    nameEl.textContent = obj.name;
     var spriteContainer = el.querySelector(".sprite_container");
     var minX = 1000000;
     var maxX = -1000000;
@@ -731,6 +1138,15 @@ function createObjectElement(spriteInfo, obj, width, height) {
         spriteContainer.style.width = (width ? width : spriteWidth) + "px";
         spriteContainer.style.height = (height ? height : spriteHeight) + "px";
     }
+    var nameEl = el.querySelector(".name");
+    if (nameType == "none") {
+        el.removeChild(nameEl);
+    } else {
+        nameEl.textContent = obj.name;
+        if (nameType != "long") {
+            nameEl.style.width = spriteContainer.style.width;
+        }
+    }
     for (var i = 0; i < obj.sprites.length; ++i) {
         var img = document.createElement("DIV");
         var spriteId = obj.sprites[i].id;
@@ -763,16 +1179,29 @@ function createObjectElement(spriteInfo, obj, width, height) {
 }
 
 function prettyTimeString(seconds) {
-    var hours = Math.floor(seconds / (60*60));
-    var minutes = Math.floor(seconds / 60) % 60;
-    var seconds = seconds % 60;
+    var result = "";
+    if (seconds >= 0) {
+        var hours = Math.floor(seconds / (60*60));
+        var minutes = Math.floor(seconds / 60) % 60;
+        var seconds = seconds % 60;
 
-    var result = seconds + "s";
-    if (minutes > 0) {
-        result = minutes + "m " + result;
-    }
-    if (hours > 0) {
-        result = hours + "h " + result;
+        if (hours > 0 && minutes == 0 && seconds == 0) {
+            result = hours + " Hour" + (hours > 1 ? "s" : "");
+        } else if (minutes > 0 && hours == 0 && seconds == 0) {
+            result = minutes + " Minute" + (minutes > 1 ? "s" : "");
+        } else if (seconds > 0 && hours == 0 && minutes == 0) {
+            result = seconds + " Second" + (seconds > 1 ? "s" : "");
+        } else {
+            result = seconds + "s";
+            if (minutes > 0) {
+                result = minutes + "m " + result;
+            }
+            if (hours > 0) {
+                result = hours + "h " + result;
+            }
+        }
+    } else {
+        result = -seconds + " Lifetime" + (seconds < -1 ? "s" : "");
     }
 
     return result;

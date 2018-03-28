@@ -145,7 +145,6 @@ body {
     font-size: 16px;
     padding: 5px;
     background-color: rgba(238, 232, 213, 0.5);
-    width: 150px;
     height: 30px;
     overflow: hidden;
     white-space: nowrap;
@@ -219,6 +218,118 @@ body {
 .tech_tree .level:nth-child(2n) {
     background: #888;
 }
+
+.recipe_view {
+    margin: 0 auto;
+    width: 800px;
+}
+
+.recipe_view .target_object {
+    margin: 30px;
+}
+
+.recipe_view .target_object h2 {
+    margin: 0;
+}
+
+.recipe_view .target_object .object_container .object {
+    cursor: default;
+}
+
+.recipe_view .target_object h2, .recipe_view .target_object .object_container {
+    text-align: center;
+}
+
+.recipe_view .recipe {
+    position: relative;
+}
+
+.recipe_view .over {
+    position: absolute;
+    display: none;
+}
+
+.recipe_view .tree {
+    position: absolute;
+    display: none;
+    background: #073642;
+    border-radius: 10px;
+}
+
+.recipe_view .tree:before {
+    content: ' ';
+    width: 0;
+    height: 0;
+    top: -10px;
+    left: 50%;
+    border-left: 15px solid transparent;
+    border-right: 15px solid transparent;
+    border-bottom: 10px solid #073642;
+    position: absolute;
+    transform: translate(-50%, 0);
+}
+
+.recipe_view .tree .tree_header {
+    text-align: center;
+}
+
+.recipe_view .tree .transition {
+    cursor: pointer;
+}
+
+.recipe_view .tree .transition.got_it {
+    padding: 15px 30px;
+    text-align: center;
+}
+
+.recipe_view .tree .transition.got_it.selected {
+    color: #002b36;
+}
+
+.recipe_view .tree .transition.got_it:hover {
+    color: #002b36;
+}
+
+.recipe_view .tree .transition.selected {
+    background: #657b8380;
+}
+
+.recipe_view .tree .transition:hover {
+    background: #586e75;
+}
+
+.recipe_view .ingredients .ingredient {
+    color: #268bd2;
+}
+
+.recipe_view .step {
+    margin: 3px 0;
+}
+
+.recipe_view .step .step_ingredient {
+    color: #268bd2;
+    text-decoration-style: dashed;
+}
+
+.recipe_view .step .step_ingredient.current {
+    background: #268bd2;
+    color: #002b36;
+}
+
+.recipe_view .step .step_ingredient.unclickable {
+    text-decoration: none;
+    cursor: default;
+}
+
+.recipe_view .step .step_ingredient.final {
+    color: #b58900;
+}
+
+.recipe_view .step .step_ingredient.final.current {
+    background: #b58900;
+    color: #002b36;
+}
+
 </style>
 <title>Recipe Explorer - One Hour One Life</title>
 </head>
@@ -243,9 +354,19 @@ body {
 </div>
 
 <div class="recipe_view">
-    <div class="recipe">
+    <div class="target_object">
+        <h2>How to make</h2>
+        <div class="object_container"></div>
     </div>
-    <div class="tree">
+    <div class="recipe">
+        <h3>Ingredients</h3>
+        <ul class="ingredients"></ul>
+        <h3>Instructions</h3>
+        <ol class="steps"></ol>
+        <div class="over">
+        </div>
+        <div class="tree">
+        </div>
     </div>
 </div>
 
