@@ -33,6 +33,12 @@ body {
     box-sizing: border-box;
 }
 
+body > .header {
+    position: relative;
+    width: 800px;
+    margin: 0 auto;
+}
+
 .header > * {
     margin: 0;
     text-align: center;
@@ -333,6 +339,22 @@ body {
     color: #002b36;
 }
 
+.header .back {
+    border-radius: 3px;
+    padding: 5px;
+    background-color: #073642;
+    color: #657b83;
+    text-decoration: none;
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translate(0, -50%);
+}
+
+.header .back:hover {
+    background-color: #eee8d5;
+    color: #839496;
+}
 </style>
 <title>Recipe Explorer - One Hour One Life</title>
 </head>
@@ -340,6 +362,7 @@ body {
 <div class="header">
     <h1>One Hour One Life</h1>
     <h2>Recipe Explorer</h2>
+    <a href="javascript:;" class="back">Search</a>
 </div>
 
 <div class="tech_tree_view">

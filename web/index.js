@@ -300,10 +300,20 @@ DataLoader.prototype.triggerLoaded = function() {
 function Page() {
     this.techTreeViewContainer = document.querySelector(".tech_tree_view");
     this.recipeViewContainer = document.querySelector(".recipe_view");
+    this.backButton = document.querySelector(".header .back");
     this.data = null;
 
     this.techTreeView = new TechTreeView(this.techTreeViewContainer, this.onQueryChanged.bind(this), this.onObjectSelected.bind(this));
     this.recipeView = new RecipeView(this.recipeViewContainer, this.onRecipeStateChanged.bind(this));
+
+    this.backButton.addEventListener("click", function() {
+        if (history.state) {
+            history.back();
+        } else {
+            history.pushState(null, null, "#");
+            this.navigateToHash();
+        }
+    }.bind(this));
 
     this.navigateToHash();
 
@@ -317,28 +327,31 @@ Page.prototype.setData = function(data) {
 };
 
 Page.prototype.onQueryChanged = function(query) {
-    history.replaceState(null, null, "#q=" + encodeURIComponent(query));
+    history.replaceState(history.state, null, "#q=" + encodeURIComponent(query));
 };
 
 Page.prototype.onObjectSelected = function(id) {
     history.replaceState({ desiredScrollPos: window.scrollY }, null, null);
     var state = this.recipeView.startRecipe(id);
     this.showRecipe();
-    history.pushState(null, null, "#r=" + state);
+    history.pushState({ back: true }, null, "#r=" + state);
 };
 
 Page.prototype.onRecipeStateChanged = function(state) {
-    history.replaceState(null, null, "#r=" + encodeURIComponent(state));
+    history.replaceState(history.state, null, "#r=" + encodeURIComponent(state));
 };
 
 Page.prototype.showTechTree = function() {
     this.techTreeViewContainer.style.display = "block";
     this.recipeViewContainer.style.display = "none";
+    this.backButton.style.display = "none";
+    this.techTreeView.focus();
 };
 
 Page.prototype.showRecipe = function() {
     this.techTreeViewContainer.style.display = "none";
     this.recipeViewContainer.style.display = "block";
+    this.backButton.style.display = "block";
 };
 
 Page.prototype.navigateToHash = function() {
@@ -368,7 +381,9 @@ Page.prototype.onPopState = function(ev) {
     var desiredScrollPos = ev.state ? ev.state.desiredScrollPos : null;
     this.navigateToHash();
     if (desiredScrollPos) {
-        window.scrollTo(0, desiredScrollPos);
+        setTimeout(function() {
+            window.scrollTo(0, desiredScrollPos);
+        }, 0);
     }
 };
 
@@ -409,8 +424,6 @@ function TechTreeView(container, onQueryChanged, onSelected) {
 
     this.searchEl.addEventListener("input", this.onSearchInput.bind(this));
     this.categoriesContainerEl.addEventListener("click", this.onCategorySelected.bind(this));
-
-    this.reset();
 }
 
 TechTreeView.prototype.reset = function() {
@@ -418,6 +431,12 @@ TechTreeView.prototype.reset = function() {
     this.updateCategoryUI();
     this.query = "";
     this.searchEl.value = "";
+    this.triggerQueryChanged();
+};
+
+TechTreeView.prototype.focus = function() {
+    this.searchEl.focus();
+    this.searchEl.select();
 };
 
 TechTreeView.prototype.setQuery = function(query) {
@@ -428,6 +447,10 @@ TechTreeView.prototype.setQuery = function(query) {
     this.searchEl.select();
     this.updateCategoryUI();
     this.runSearch();
+};
+
+TechTreeView.prototype.getQuery = function() {
+    return this.category + "!" + this.query;
 };
 
 TechTreeView.prototype.setCategory = function(cat) {
@@ -484,7 +507,7 @@ TechTreeView.prototype.onTechTreeClick = function(ev) {
 
 TechTreeView.prototype.triggerQueryChanged = function() {
     if (this.onQueryChanged) {
-        this.onQueryChanged(this.category + "!" + this.query);
+        this.onQueryChanged(this.getQuery());
     }
 };
 
