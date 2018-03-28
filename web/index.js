@@ -626,6 +626,13 @@ function RecipeView(container, onStateChanged) {
     this.recipeTree = null;
     this.currentNode = null;
     this.data = null;
+
+    document.body.addEventListener("click", function() {
+        if (this.treeEl) {
+            this.treeEl.style.display = "none";
+            this.currentNode = null;
+        }
+    }.bind(this));
 };
 
 RecipeView.prototype.getTextForStep = function(step) {
@@ -808,7 +815,10 @@ RecipeView.prototype.populateTransitions = function(node) {
     }
 };
 
-RecipeView.prototype.modifyNode = function(el, node) {
+RecipeView.prototype.modifyNode = function(el, node, ev) {
+    if (ev) {
+        ev.stopPropagation();
+    }
     this.populateTransitions(node);
     this.currentNode = node;
 
@@ -816,6 +826,10 @@ RecipeView.prototype.modifyNode = function(el, node) {
     this.treeEl.parentElement.insertBefore(newTreeEl, this.treeEl);
     this.treeEl.parentElement.removeChild(this.treeEl);
     this.treeEl = newTreeEl;
+
+    this.treeEl.addEventListener("click", function(ev) {
+        ev.stopPropagation();
+    });
 
     var headerEl = document.createElement("DIV");
     headerEl.classList.add("tree_header");
@@ -852,11 +866,9 @@ RecipeView.prototype.modifyNode = function(el, node) {
     this.treeEl.style.top = Math.floor(bottomY) + 13 + "px";
     this.treeEl.style.display = "block";
     this.treeEl.style.left = Math.floor(centerX - this.treeEl.offsetWidth/2) + "px";
-
-    this.updateRecipeUI();
 };
 
-RecipeView.prototype.selectNodeChild = function(idx) {
+RecipeView.prototype.selectNodeChild = function(idx, el) {
     this.currentNode.selected = idx;
     var transitionEls = this.treeEl.querySelectorAll(".transition");
     for (var i = 0; i < transitionEls.length; ++i) {
@@ -871,9 +883,13 @@ RecipeView.prototype.selectNodeChild = function(idx) {
     this.treeEl.style.display = "none";
     this.updateRecipeUI();
     this.triggerStateChanged();
+
+    el.stopPropagation();
+    return false;
 };
 
 RecipeView.prototype.updateRecipeUI = function() {
+    this.treeEl.style.display = "none";
     var ingredients = [];
     var steps = [];
     this.processNode(ingredients, steps, this.recipeTree);
