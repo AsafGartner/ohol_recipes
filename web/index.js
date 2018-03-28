@@ -733,7 +733,7 @@ RecipeView.prototype.setState = function(state) {
         }
     }).bind(this);
     if (this.data) {
-        var parts = state.split('|');
+        var parts = state.split('!');
         var root = parts.shift();
         this.startRecipe(parseInt(root, 10));
         applyState(parts, this.recipeTree);
@@ -760,7 +760,7 @@ RecipeView.prototype.getState = function() {
         state.push(this.recipeTree.id);
         buildState(state, this.recipeTree);
     }
-    return state.join("|");
+    return state.join("!");
 };
 
 RecipeView.prototype.triggerStateChanged = function() {
