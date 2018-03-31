@@ -6,6 +6,10 @@
 //   - Identify reusable ingredients/products.
 //   - Improve overall style.
 
+// DepTree constraints:
+// 1. Node with parent indent >= max child indent + 1
+// 2. Left child indent >= Right child indent + 1
+// 3. Right child indent = max(Right child's right child indent, Right child's left child indent) + 1
 
 function DataLoader() {
     this.callbacks = [];
@@ -842,53 +846,58 @@ RecipeView.prototype.modifyNode = function(el, node, ev) {
     if (ev) {
         ev.stopPropagation();
     }
-    this.populateTransitions(node);
-    this.currentNode = node;
+    if (this.currentNode == node) {
+        this.treeEl.style.display = "none";
+        this.currentNode = null;
+    } else {
+        this.populateTransitions(node);
+        this.currentNode = node;
 
-    var newTreeEl = this.treeEl.cloneNode(false);
-    this.treeEl.parentElement.insertBefore(newTreeEl, this.treeEl);
-    this.treeEl.parentElement.removeChild(this.treeEl);
-    this.treeEl = newTreeEl;
+        var newTreeEl = this.treeEl.cloneNode(false);
+        this.treeEl.parentElement.insertBefore(newTreeEl, this.treeEl);
+        this.treeEl.parentElement.removeChild(this.treeEl);
+        this.treeEl = newTreeEl;
 
-    this.treeEl.addEventListener("click", function(ev) {
-        ev.stopPropagation();
-    });
+        this.treeEl.addEventListener("click", function(ev) {
+            ev.stopPropagation();
+        });
 
-    var headerEl = document.createElement("DIV");
-    headerEl.classList.add("tree_header");
+        var headerEl = document.createElement("DIV");
+        headerEl.classList.add("tree_header");
 
-    headerEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[node.id], 120, 120, "none"));
-    this.treeEl.appendChild(headerEl);
+        headerEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[node.id], 120, 120, "none"));
+        this.treeEl.appendChild(headerEl);
 
-    var gotIt = document.createElement("DIV");
-    gotIt.textContent = "Already got it!";
-    gotIt.classList.add("transition");
-    gotIt.classList.add("got_it");
-    if (node.selected == -1) {
-        gotIt.classList.add("selected");
-    }
-    gotIt.addEventListener("click", this.selectNodeChild.bind(this, -1));
-    this.treeEl.appendChild(gotIt);
-
-    for (var i = 0; i < node.transitions.length; ++i) {
-        var t = node.transitions[i];
-        var transitionEl = document.createElement("DIV");
-        transitionEl.classList.add("transition");
-        if (node.selected == i) {
-            transitionEl.classList.add("selected");
+        var gotIt = document.createElement("DIV");
+        gotIt.textContent = "Already got it!";
+        gotIt.classList.add("transition");
+        gotIt.classList.add("got_it");
+        if (node.selected == -1) {
+            gotIt.classList.add("selected");
         }
-        transitionEl.appendChild(createObjectElementById(this.data.spriteInfo, this.data.objects, t[0].id, "actor", this.data.transitions[t[0].transitionIdx].timer, 120, 120));
-        transitionEl.appendChild(document.createTextNode("+"));
-        transitionEl.appendChild(createObjectElementById(this.data.spriteInfo, this.data.objects, t[1].id, "target", null, 120, 120));
-        transitionEl.addEventListener("click", this.selectNodeChild.bind(this, i));
-        this.treeEl.appendChild(transitionEl);
-    }
+        gotIt.addEventListener("click", this.selectNodeChild.bind(this, -1));
+        this.treeEl.appendChild(gotIt);
 
-    var centerX = el.offsetLeft + el.offsetWidth/2;
-    var bottomY = el.offsetTop + el.offsetHeight;
-    this.treeEl.style.top = Math.floor(bottomY) + 13 + "px";
-    this.treeEl.style.display = "block";
-    this.treeEl.style.left = Math.floor(centerX - this.treeEl.offsetWidth/2) + "px";
+        for (var i = 0; i < node.transitions.length; ++i) {
+            var t = node.transitions[i];
+            var transitionEl = document.createElement("DIV");
+            transitionEl.classList.add("transition");
+            if (node.selected == i) {
+                transitionEl.classList.add("selected");
+            }
+            transitionEl.appendChild(createObjectElementById(this.data.spriteInfo, this.data.objects, t[0].id, "actor", this.data.transitions[t[0].transitionIdx].timer, 120, 120));
+            transitionEl.appendChild(document.createTextNode("+"));
+            transitionEl.appendChild(createObjectElementById(this.data.spriteInfo, this.data.objects, t[1].id, "target", null, 120, 120));
+            transitionEl.addEventListener("click", this.selectNodeChild.bind(this, i));
+            this.treeEl.appendChild(transitionEl);
+        }
+
+        var centerX = el.offsetParent.offsetLeft + el.offsetLeft + el.offsetWidth/2;
+        var bottomY = el.offsetParent.offsetTop + el.offsetTop + el.offsetHeight;
+        this.treeEl.style.top = Math.floor(bottomY) + 13 + "px";
+        this.treeEl.style.display = "block";
+        this.treeEl.style.left = Math.floor(centerX - this.treeEl.offsetWidth/2) + "px";
+    }
 };
 
 RecipeView.prototype.selectNodeChild = function(idx, el) {
@@ -960,11 +969,23 @@ RecipeView.prototype.updateRecipeUI = function() {
         this.stepsEl.appendChild(stepEl);
     } else {
         for (var i = 0; i < steps.length; ++i) {
-            var node = steps[i];
+            var node = steps[i].node;
+            var indent = steps[i].indent;
             var stepText = this.getTextForStep(node);
             var children = node.transitions[node.selected];
             var stepEl = document.createElement("LI");
             stepEl.classList.add("step");
+            var indentEl = document.createElement("DIV");
+            indentEl.classList.add("indent");
+            if (steps[i].side) {
+                indentEl.classList.add(steps[i].side);
+            }
+            if (steps[i].parent) {
+                indentEl.classList.add("has_parent");
+            }
+            indentEl.style.left = -28 + -(indent * 15) + "px";
+            indentEl.style.width = (indent * 15) + "px";
+            stepEl.appendChild(indentEl);
             stepEl.appendChild(document.createTextNode(stepText.preActor));
             var actorEl = document.createElement("A");
             actorEl.setAttribute("href", "javascript:;");
@@ -1009,21 +1030,53 @@ RecipeView.prototype.updateRecipeUI = function() {
             resultEl.textContent = this.getNodeName(node);
             resultEl.addEventListener("click", this.modifyNode.bind(this, resultEl, node));
             stepEl.appendChild(resultEl);
+            steps[i].el = stepEl;
             this.stepsEl.appendChild(stepEl);
+        }
+        for (var i = 0; i < steps.length; ++i) {
+            if (steps[i].parent) {
+                var step = steps[i];
+                var indentEl = step.el.querySelector(".indent");
+                var distanceToParent = step.parent.el.offsetTop - step.el.offsetTop;
+                indentEl.style.height = distanceToParent + "px";
+            }
+
         }
     }
 };
 
-RecipeView.prototype.processNode = function(ingredients, steps, node) {
+RecipeView.prototype.processNode = function(ingredients, steps, node, parent, side) {
     if (node.selected == -1) {
         if (node.id > 0) {
             ingredients.push(node);
         }
+        return null;
     } else {
+        var step = {
+            node: node,
+            parent: parent,
+            side: side,
+            indent: 0,
+            el: null
+        };
         var children = node.transitions[node.selected];
-        this.processNode(ingredients, steps, children[0]);
-        this.processNode(ingredients, steps, children[1]);
-        steps.push(node);
+        var leftStep = this.processNode(ingredients, steps, children[0], step, "left");
+        var rightStep = this.processNode(ingredients, steps, children[1], step, "right");
+
+        if (leftStep && rightStep) {
+            leftStep.indent = Math.max(leftStep.indent, rightStep.indent + 1);
+        }
+
+        var leftIndent = (leftStep ? leftStep.indent : 0);
+        var rightIndent = (rightStep ? rightStep.indent : 0);
+
+        step.indent = Math.max(leftIndent, rightIndent);
+
+        if (step.parent) {
+            step.indent += 1;
+        }
+        steps.push(step);
+        return step;
     }
 };
 
@@ -1047,6 +1100,9 @@ biomesContainer.appendChild(biome3);
 var biome4 = document.createElement("DIV");
 biome4.classList.add("biome4");
 biomesContainer.appendChild(biome4);
+var biome5 = document.createElement("DIV");
+biome5.classList.add("biome5");
+biomesContainer.appendChild(biome5);
 objectPrototype.appendChild(biomesContainer);
 
 var spriteContainer = document.createElement("DIV");

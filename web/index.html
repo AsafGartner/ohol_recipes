@@ -140,6 +140,9 @@ body > .header {
 .object .biomes .biome4 {
     background: url(ground_4.png);
 }
+.object .biomes .biome5 {
+    background: url(ground_5.png);
+}
 
 .object .name {
     width: 100%;
@@ -227,6 +230,7 @@ body > .header {
 
 .recipe_view {
     margin: 0 auto;
+    margin-bottom: 800px;
     width: 800px;
 }
 
@@ -314,6 +318,7 @@ body > .header {
 
 .recipe_view .step {
     margin: 3px 0;
+    position: relative;
 }
 
 .recipe_view .step .step_ingredient {
@@ -337,6 +342,48 @@ body > .header {
 .recipe_view .step .step_ingredient.final.current {
     background: #b58900;
     color: #002b36;
+}
+
+.recipe_view .step .indent {
+    height: 0px;
+    border-top: 1px solid #b58900;
+    border-left: 1px solid #b58900;
+    position: absolute;
+    top: 50%;
+    left: 0;
+    border-radius: 5px 0 0 0;
+}
+
+.recipe_view .step .indent.left {
+    border-top: 1px solid #d33682;
+    border-left: 1px solid #d33682;
+}
+
+.recipe_view .step .indent.right {
+    border-top: 1px solid #6c71c4;
+    border-left: 1px solid #6c71c4;
+}
+
+.recipe_view .step .indent.left.has_parent:after {
+    content: ' ';
+    display: block;
+    position: absolute;
+    bottom: 0;
+    left: -6px;
+    border-top: 5px solid #d33682;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+}
+
+.recipe_view .step .indent.right.has_parent:after {
+    content: ' ';
+    display: block;
+    position: absolute;
+    bottom: 0;
+    left: -6px;
+    border-top: 5px solid #6c71c4;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
 }
 
 .header .back {

@@ -51,7 +51,7 @@ struct Object {
     char clothing;
     int numSlots;
     int numSprites;
-    Sprite sprites[30];
+    Sprite sprites[100];
     int pixHeight;
     float heldX;
     float heldY;
