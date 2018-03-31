@@ -366,12 +366,12 @@ Page.prototype.navigateToHash = function() {
             hash = hash.slice(1);
         }
         if (hash.startsWith("q=")) {
-            this.techTreeView.setQuery(decodeURIComponent(hash.slice(2)));
             this.showTechTree();
+            this.techTreeView.setQuery(decodeURIComponent(hash.slice(2)));
             found = true;
         } else if (hash.startsWith("r=")){
-            this.recipeView.setState(decodeURIComponent(hash.slice(2)));
             this.showRecipe();
+            this.recipeView.setState(decodeURIComponent(hash.slice(2)));
             found = true;
         }
     }
