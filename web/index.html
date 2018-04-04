@@ -144,6 +144,20 @@ body > .header {
     background: url(ground_5.png);
 }
 
+.object .info {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    border-radius: 3px;
+    background-color: rgba(238, 232, 213, 0.5);
+    padding: 3px;
+    white-space: pre;
+    color: black;
+    font-weight: bold;
+    font-size: 12px;
+    display: none;
+}
+
 .object .name {
     width: 100%;
     text-align: center;
@@ -230,15 +244,17 @@ body > .header {
 
 .recipe_view {
     margin: 0 auto;
+    margin-top: 30px;
     margin-bottom: 800px;
     width: 800px;
 }
 
 .recipe_view .target_object {
-    margin: 30px;
+    float: right;
 }
 
 .recipe_view .target_object h2 {
+    font-size: 30px;
     margin: 0;
 }
 
@@ -250,8 +266,16 @@ body > .header {
     text-align: center;
 }
 
+.recipe_view .ingredients {
+    min-height: 200px;
+}
+
 .recipe_view .recipe {
     position: relative;
+}
+
+.recipe_view h3 {
+    margin: 0;
 }
 
 .recipe_view .over {
@@ -319,6 +343,11 @@ body > .header {
 .recipe_view .step {
     margin: 3px 0;
     position: relative;
+    transition: background-color 600ms ease-in;
+}
+
+.recipe_view .step.modified {
+    background-color: #2aa19880;
 }
 
 .recipe_view .step .step_ingredient {
@@ -373,6 +402,7 @@ body > .header {
     border-top: 5px solid #d33682;
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
+    width: 1px;
 }
 
 .recipe_view .step .indent.right.has_parent:after {
@@ -384,6 +414,7 @@ body > .header {
     border-top: 5px solid #6c71c4;
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
+    width: 1px;
 }
 
 .header .back {

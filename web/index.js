@@ -616,7 +616,7 @@ TechTreeView.prototype.renderStep = function() {
             var objIds = this.renderData.toRender[this.renderData.levelIdx][1];
             while (this.renderData.objIdx < objIds.length) {
                 var objId = objIds[this.renderData.objIdx++];
-                this.renderData.curLevelEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[objId], 150, 150));
+                this.renderData.curLevelEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[objId], 150, 150, true));
                 if (this.renderData.objIdx == objIds.length) {
                     this.renderData.levelIdx++;
                     this.renderData.objIdx = 0;
@@ -694,6 +694,9 @@ RecipeView.prototype.getNodeName = function(node) {
     var name = "";
     if (id > 0 && this.data && this.data.objects[id]) {
         name = this.data.objects[id].name;
+        if (name.startsWith("@")) {
+            name = name.replace("@", "Any");
+        }
     } else if (id == -2 && type == "actor") {
         name = "Touch";
     } else if (id == -2 && type == "target") {
@@ -720,7 +723,7 @@ RecipeView.prototype.startRecipe = function(id) {
     this.recipeTree = this.makeNode(id);
     if (this.data) {
         this.targetObjectContainer.innerHTML = "";
-        this.targetObjectContainer.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[id], 200, 200, "long"));
+        this.targetObjectContainer.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[id], 200, 200, true, "long"));
         this.populateTransitions(this.recipeTree);
         this.updateRecipeUI();
     }
@@ -865,7 +868,7 @@ RecipeView.prototype.modifyNode = function(el, node, ev) {
         var headerEl = document.createElement("DIV");
         headerEl.classList.add("tree_header");
 
-        headerEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[node.id], 120, 120, "none"));
+        headerEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[node.id], 120, 120, false, "none"));
         this.treeEl.appendChild(headerEl);
 
         var gotIt = document.createElement("DIV");
@@ -911,16 +914,17 @@ RecipeView.prototype.selectNodeChild = function(idx, el) {
         }
     }
 
-    this.currentNode = null;
     this.treeEl.style.display = "none";
-    this.updateRecipeUI();
+    var modified = this.currentNode;
+    this.currentNode = null;
+    this.updateRecipeUI(modified);
     this.triggerStateChanged();
 
     el.stopPropagation();
     return false;
 };
 
-RecipeView.prototype.updateRecipeUI = function() {
+RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
     this.treeEl.style.display = "none";
     var ingredients = [];
     var steps = [];
@@ -975,6 +979,12 @@ RecipeView.prototype.updateRecipeUI = function() {
             var children = node.transitions[node.selected];
             var stepEl = document.createElement("LI");
             stepEl.classList.add("step");
+            if (node == modifiedNode) {
+                stepEl.classList.add("modified");
+                setTimeout(function(el) {
+                    el.classList.remove("modified");
+                }.bind(this, stepEl), 0);
+            }
             var indentEl = document.createElement("DIV");
             indentEl.classList.add("indent");
             if (steps[i].side) {
@@ -1109,6 +1119,10 @@ var spriteContainer = document.createElement("DIV");
 spriteContainer.classList.add("sprite_container");
 objectPrototype.appendChild(spriteContainer);
 
+var infoContainer = document.createElement("DIV");
+infoContainer.classList.add("info");
+objectPrototype.appendChild(infoContainer);
+
 var nameEl = document.createElement("SPAN");
 nameEl.classList.add("name");
 objectPrototype.appendChild(nameEl);
@@ -1117,7 +1131,7 @@ objectPrototype.appendChild(nameEl);
 function createObjectElementById(spriteInfo, objects, id, type, time, width, height) {
     var result = null;
     if (id > 0 && objects[id]) {
-        result = createObjectElement(spriteInfo, objects[id], width, height);
+        result = createObjectElement(spriteInfo, objects[id], width, height, false);
     } else if (id == -2 && type == "actor") {
         result = objectPrototype.cloneNode(true);
         result.querySelector(".name").textContent = "Bother";
@@ -1168,7 +1182,7 @@ function getSpritePos(spriteInfo, obj, idx) {
     return result;
 }
 
-function createObjectElement(spriteInfo, obj, width, height, nameType) {
+function createObjectElement(spriteInfo, obj, width, height, withInfo, nameType) {
     if (height && nameType != "none") {
         height -= 30;
     }
@@ -1242,6 +1256,41 @@ function createObjectElement(spriteInfo, obj, width, height, nameType) {
             nameEl.style.width = spriteContainer.style.width;
         }
     }
+    if (withInfo) {
+        var infoText = "";
+        if (obj.heat > 0) {
+            infoText += "\n🔥 " + obj.heat;
+        }
+        if (obj.clothing != "n") {
+            var clothingLookup = {
+                b: "Bottom",
+                p: "Backpack",
+                h: "Hat",
+                t: "Top",
+                s: "Shoe"
+            };
+            var clothingType = clothingLookup[obj.clothing] || "Unknown";
+            infoText += "\n👕 " + clothingType;
+        }
+        if (obj.rValue > 0) {
+            infoText += "\n☀️ " + obj.rValue;
+        }
+        if (obj.speed != 1.0) {
+            infoText += "\n🏃 " + obj.speed;
+        }
+        if (obj.food > 0) {
+            infoText += "\n🍕 " + obj.food;
+        }
+        if (obj.numSlots > 0) {
+            infoText += "\n📦 " + obj.numSlots;
+        }
+        if (infoText.length > 0) {
+            infoText = infoText.slice(1);
+            var infoEl = el.querySelector(".info");
+            infoEl.textContent = infoText;
+            infoEl.style.display = "block";
+        }
+    }
     for (var i = 0; i < obj.sprites.length; ++i) {
         var img = document.createElement("DIV");
         var spriteId = obj.sprites[i].id;
@@ -1258,7 +1307,7 @@ function createObjectElement(spriteInfo, obj, width, height, nameType) {
         }
         transform += "translate(" + -spriteInfo[obj.sprites[i].id].anchorX + "px, " + -spriteInfo[obj.sprites[i].id].anchorY + "px)";
         img.style.transform = transform;
-        if (obj.sprites[i].r != 1.0 || obj.sprites[i].g != 1.0 || obj.sprites[i].b != 1.0) {
+        if (!obj.name.startsWith("@") && (obj.sprites[i].r != 1.0 || obj.sprites[i].g != 1.0 || obj.sprites[i].b != 1.0)) {
             var r = Math.floor(255*obj.sprites[i].r);
             var g = Math.floor(255*obj.sprites[i].g);
             var b = Math.floor(255*obj.sprites[i].b);
