@@ -39,6 +39,7 @@ struct Sprite {
 
 struct Object {
     char name[1000];
+    int permanent;
     int numCategories;
     int categories[10];
     int id;
@@ -250,6 +251,8 @@ int main(int argc, char* argv[]) {
             } else {
                 if (strstr(line, "id=")) {
                     obj.id = atoi(line+3);
+                } else if (strstr(line, "permanent=")) {
+                    obj.permanent = atoi(line+strlen("permanent="));
                 } else if (strstr(line, "containSize=")) {
                     obj.containSize = atoi(line+strlen("containSize="));
                 } else if (strstr(line, "mapChance=")) {
@@ -481,6 +484,7 @@ int main(int argc, char* argv[]) {
             }
             objTextCursor += sprintf(objTextCursor, "\n");
         }
+        objTextCursor += sprintf(objTextCursor, "permanent=%d\n", obj.permanent);
         objTextCursor += sprintf(objTextCursor, "heat=%d\n", obj.heat);
         objTextCursor += sprintf(objTextCursor, "rValue=%f\n", obj.rValue);
         objTextCursor += sprintf(objTextCursor, "food=%d\n", obj.food);

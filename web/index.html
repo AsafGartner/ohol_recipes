@@ -245,7 +245,6 @@ body > .header {
 .recipe_view {
     margin: 0 auto;
     margin-top: 30px;
-    margin-bottom: 800px;
     width: 800px;
 }
 
@@ -354,6 +353,18 @@ body > .header {
     color: #268bd2;
 }
 
+.recipe_view .step .step_ingredient.actor:not(.unclickable) {
+    // color: #d33682;
+}
+
+.recipe_view .step .step_ingredient.target:not(.unclickable) {
+    // color: #6c71c4;
+}
+
+.recipe_view .step .step_ingredient.ingredient:not(.unclickable) {
+    // color: #2aa198;
+}
+
 .recipe_view .step .step_ingredient.current {
     background: #268bd2;
     color: #002b36;
@@ -398,10 +409,10 @@ body > .header {
     display: block;
     position: absolute;
     bottom: 0;
-    left: -6px;
-    border-top: 5px solid #d33682;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
+    left: -5px;
+    border-top: 4px solid #d33682;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
     width: 1px;
 }
 
@@ -410,10 +421,10 @@ body > .header {
     display: block;
     position: absolute;
     bottom: 0;
-    left: -6px;
-    border-top: 5px solid #6c71c4;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
+    left: -5px;
+    border-top: 4px solid #6c71c4;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
     width: 1px;
 }
 
@@ -459,7 +470,6 @@ body > .header {
 
 <div class="recipe_view">
     <div class="target_object">
-        <h2>How to make</h2>
         <div class="object_container"></div>
     </div>
     <div class="recipe">

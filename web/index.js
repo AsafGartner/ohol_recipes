@@ -99,12 +99,14 @@ DataLoader.prototype.parseFile = function(body) {
         if (mode == "objects") {
             if (line == "=====") {
                 if (curObj) {
+                    curObj.held = !curObj.permanent;
                     this.data.objects[curObj.id] = curObj;
                 }
                 curObj = {
                     id: -100,
                     name: "",
                     searchName: "",
+                    permanent: 0,
                     containSize: 0,
                     biomes: [],
                     categories: [],
@@ -128,8 +130,10 @@ DataLoader.prototype.parseFile = function(body) {
                 } else if (line.startsWith("name=")) {
                     curObj.name = line.slice(5);
                     curObj.searchName = curObj.name.toLowerCase();
+                } else if (line.startsWith("permanent=")) {
+                    curObj.permanent = parseInt(line.slice(10), 10);
                 } else if (line.startsWith("containSize=")) {
-                    curObj.containSize = parseInt(line.slice(12));
+                    curObj.containSize = parseInt(line.slice(12), 10);
                 } else if (line.startsWith("biomes=")) {
                     var biomes = line.slice(7).split(",");
                     for (var b = 0; b < biomes.length; ++b) {
@@ -993,8 +997,8 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
             if (steps[i].parent) {
                 indentEl.classList.add("has_parent");
             }
-            indentEl.style.left = -28 + -(indent * 15) + "px";
-            indentEl.style.width = (indent * 15) + "px";
+            indentEl.style.left = -28 + -(indent * 10) + "px";
+            indentEl.style.width = (indent * 10) + "px";
             stepEl.appendChild(indentEl);
             stepEl.appendChild(document.createTextNode(stepText.preActor));
             var actorEl = document.createElement("A");
@@ -1004,6 +1008,9 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
                 actorEl.classList.add("current");
             }
             actorEl.classList.add("actor");
+            if (children[0].id > 0 && children[0].selected == -1) {
+                actorEl.classList.add("ingredient");
+            }
             actorEl.textContent = this.getNodeName(children[0]);
             if (children[0].id > 0) {
                 actorEl.addEventListener("click", this.modifyNode.bind(this, actorEl, children[0]));
@@ -1019,6 +1026,9 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
                 targetEl.classList.add("current");
             }
             targetEl.classList.add("target");
+            if (children[1].id > 0 && children[1].selected == -1) {
+                targetEl.classList.add("ingredient");
+            }
             targetEl.textContent = this.getNodeName(children[1]);
             if (children[1].id > 0) {
                 targetEl.addEventListener("click", this.modifyNode.bind(this, targetEl, children[1]));
