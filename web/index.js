@@ -116,6 +116,7 @@ DataLoader.prototype.parseFile = function(body) {
                     speed: 0.0,
                     clothing: "n",
                     numSlots: 0,
+                    numUses: 0,
                     pixHeight: 0,
                     held: 0,
                     techLevel: -1,
@@ -156,6 +157,8 @@ DataLoader.prototype.parseFile = function(body) {
                     curObj.clothing = line.slice(9);
                 } else if (line.startsWith("numSlots=")) {
                     curObj.numSlots = parseInt(line.slice(9), 10);
+                } else if (line.startsWith("numUses=")) {
+                    curObj.numUses = parseInt(line.slice(8), 10);
                 } else if (line.startsWith("numSprites=")) {
                     // Unused
                 } else if (line.startsWith("pixHeight=")) {
@@ -1293,6 +1296,9 @@ function createObjectElement(spriteInfo, obj, width, height, withInfo, nameType)
         }
         if (obj.numSlots > 0) {
             infoText += "\n📦 " + obj.numSlots;
+        }
+        if (obj.numUses > 1) {
+            infoText += "\n🖐️ " + obj.numUses;
         }
         if (infoText.length > 0) {
             infoText = infoText.slice(1);

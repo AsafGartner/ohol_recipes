@@ -37,31 +37,39 @@ struct Sprite {
     float b;
 };
 
+#define NAME_LENGTH 1000
+#define NUM_CATS 10
+#define NUM_BIOMES 10
+#define NUM_SPRITES 100
+
 struct Object {
-    char name[1000];
+    char name[NAME_LENGTH];
     int permanent;
     int numCategories;
-    int categories[10];
+    int categories[NUM_CATS];
     int id;
     int containSize;
-    bool biomes[10];
+    bool biomes[NUM_BIOMES];
     int heat;
     float rValue;
     int food;
     float speed;
     char clothing;
+    int numUses;
     int numSlots;
     int numSprites;
-    Sprite sprites[100];
+    Sprite sprites[NUM_SPRITES];
     int pixHeight;
     float heldX;
     float heldY;
 };
 
+#define NUM_OBJ_IN_CAT 100
+
 struct Category {
     int id;
     int numObjects;
-    int objIds[100];
+    int objIds[NUM_OBJ_IN_CAT];
 };
 
 int main(int argc, char* argv[]) {
@@ -70,20 +78,23 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    bool requiredObjects[100000];
+    bool requiredObjects[100000] = {};
     int maxObjId = -1;
-    bool requiredSprites[100000];
+    bool requiredSprites[100000] = {};
     int maxSpriteId = -1;
     int numTransitions = 0;
     Transition *transitions = (Transition *)malloc(sizeof(Transition) * 10000);
+    memset(transitions, 0, sizeof(Transition) * 10000);
     Object *objects = (Object *)malloc(sizeof(Object) * 100000);
     memset(objects, 0, sizeof(Object) * 100000);
     int numCategories = 0;
     Category *categories = (Category *)malloc(sizeof(Category) * 100);
+    memset(categories, 0, sizeof(Category) * 100);
     int maxBiome = 0;
 
     int numSpriteInfo = 0;
     SpriteInfo *spriteInfos = (SpriteInfo *)malloc(sizeof(SpriteInfo) * 100000);
+    memset(spriteInfos, 0, sizeof(SpriteInfo) * 100000);
 
 #define FILE_CONTENTS_MAX 2000000
     char *fileContents = (char *)malloc(sizeof(char) * FILE_CONTENTS_MAX);
@@ -131,12 +142,20 @@ int main(int argc, char* argv[]) {
         fileCursor += amountRead;
         sscanf(fileCursor, "numObjects=%d\n%n", &cat.numObjects, &amountRead);
         fileCursor += amountRead;
+        if (cat.numObjects >= NUM_OBJ_IN_CAT) {
+            printf("ERROR - Too many objects in category %d\n", cat.id);
+            cat.numObjects = NUM_OBJ_IN_CAT - 1;
+        }
         for (int i = 0; i < cat.numObjects; ++i) {
             sscanf(fileCursor, "%d\n%n", &cat.objIds[i], &amountRead);
             int objId = cat.objIds[i];
             requiredObjects[objId] = true;
             maxObjId = (maxObjId < objId ? objId : maxObjId);
-            objects[objId].categories[objects[objId].numCategories++] = cat.id;
+            if (objects[objId].numCategories < NUM_CATS) {
+                objects[objId].categories[objects[objId].numCategories++] = cat.id;
+            } else {
+                printf("ERROR - Too many categories for object %d\n", objId);
+            }
             fileCursor += amountRead;
         }
         categories[numCategories++] = cat;
@@ -245,59 +264,74 @@ int main(int argc, char* argv[]) {
             if (lineNum == 1) {
                 char *nameCursor = obj.name;
                 lineCursor = line;
-                while (*lineCursor) {
+                while (*lineCursor && nameCursor < obj.name + NAME_LENGTH) {
                     *nameCursor++ = *lineCursor++;
                 }
+                if (nameCursor >= obj.name + NAME_LENGTH) {
+                    printf("ERROR - Object name too long %s\n", filename);
+                }
             } else {
-                if (strstr(line, "id=")) {
+                if (strstr(line, "id=") == line) {
                     obj.id = atoi(line+3);
-                } else if (strstr(line, "permanent=")) {
+                } else if (strstr(line, "permanent=") == line) {
                     obj.permanent = atoi(line+strlen("permanent="));
-                } else if (strstr(line, "containSize=")) {
+                } else if (strstr(line, "containSize=") == line) {
                     obj.containSize = atoi(line+strlen("containSize="));
-                } else if (strstr(line, "mapChance=")) {
+                } else if (strstr(line, "mapChance=") == line) {
                     if (atof(line + strlen("mapChance=")) > 0.0f) {
                         lineCursor = strstr(line, "biomes") + strlen("biomes_");
                         while (*lineCursor) {
                             int biomeIdx = atoi(lineCursor);
                             maxBiome = (biomeIdx > maxBiome ? biomeIdx : maxBiome);
-                            obj.biomes[biomeIdx] = true;
+                            if (maxBiome < NUM_BIOMES) {
+                                obj.biomes[biomeIdx] = true;
+                            } else {
+                                printf("ERROR - New biome in object %d\n", obj.id);
+                            }
                             lineCursor += 2;
                         }
                     }
-                } else if (strstr(line, "heatValue=")) {
+                } else if (strstr(line, "heatValue=") == line) {
                     obj.heat = atoi(line + strlen("heatValue="));
-                } else if (strstr(line, "rValue=")) {
+                } else if (strstr(line, "rValue=") == line) {
                     obj.rValue = (float)atof(line + strlen("rValue="));
-                } else if (strstr(line, "foodValue=")) {
+                } else if (strstr(line, "foodValue=") == line) {
                     obj.food = atoi(line + strlen("foodValue="));
-                } else if (strstr(line, "speedMult=")) {
+                } else if (strstr(line, "speedMult=") == line) {
                     obj.speed = (float)atof(line + strlen("speedMult="));
-                } else if (strstr(line, "clothing=")) {
+                } else if (strstr(line, "clothing=") == line) {
                     obj.clothing = *(line + strlen("clothing="));
-                } else if (strstr(line, "numSlots=")) {
+                } else if (strstr(line, "numUses=")) {
+                    obj.numUses = atoi(line + strlen("numUses="));
+                } else if (strstr(line, "numSlots=") == line) {
                     obj.numSlots = atoi(line + strlen("numSlots="));
-                } else if (strstr(line, "numSprites=")) {
+                } else if (strstr(line, "numSprites=") == line) {
                     obj.numSprites = atoi(line + strlen("numSprites="));
-                } else if (strstr(line, "spriteID=")) {
+                } else if (strstr(line, "spriteID=") == line) {
                     int spriteId = atoi(line + strlen("spriteID="));
-                    obj.sprites[++spriteIdx].id = spriteId;
-                    requiredSprites[spriteId] = true;
-                    maxSpriteId = (maxSpriteId < spriteId ? spriteId : maxSpriteId);
-                } else if (strstr(line, "pos=")) {
-                    sscanf(line, "pos=%f,%f", &obj.sprites[spriteIdx].x, &obj.sprites[spriteIdx].y);
-                } else if (strstr(line, "rot=")) {
-                    obj.sprites[spriteIdx].rot = (float)atof(line + strlen("rot="));
-                } else if (strstr(line, "hFlip=")) {
-                    obj.sprites[spriteIdx].hFlip = atoi(line + strlen("hFlip="));
-                } else if (strstr(line, "parent=")) {
-                    obj.sprites[spriteIdx].parent = atoi(line + strlen("parent="));
-                } else if (strstr(line, "color=")) {
-                    sscanf(line + strlen("color="), "%f,%f,%f", &obj.sprites[spriteIdx].r, &obj.sprites[spriteIdx].g, &obj.sprites[spriteIdx].b);
-                } else if (strstr(line, "pixHeight=")) {
+                    if (spriteIdx < NUM_SPRITES - 1) {
+                        obj.sprites[++spriteIdx].id = spriteId;
+                        requiredSprites[spriteId] = true;
+                        maxSpriteId = (maxSpriteId < spriteId ? spriteId : maxSpriteId);
+                    } else {
+                        printf("ERROR - Too many sprites for object %d\n", obj.id);
+                    }
+                } else if (strstr(line, "pixHeight=") == line) {
                     obj.pixHeight = atoi(line + strlen("pixHeight="));
-                } else if (strstr(line, "heldOffset=")) {
+                } else if (strstr(line, "heldOffset=") == line) {
                     sscanf(line + strlen("heldOffset="), "%f,%f", &obj.heldX, &obj.heldY);
+                } else if (spriteIdx >= 0) {
+                    if (strstr(line, "pos=") == line) {
+                        sscanf(line, "pos=%f,%f", &obj.sprites[spriteIdx].x, &obj.sprites[spriteIdx].y);
+                    } else if (strstr(line, "rot=") == line) {
+                        obj.sprites[spriteIdx].rot = (float)atof(line + strlen("rot="));
+                    } else if (strstr(line, "hFlip=") == line) {
+                        obj.sprites[spriteIdx].hFlip = atoi(line + strlen("hFlip="));
+                    } else if (strstr(line, "parent=") == line) {
+                        obj.sprites[spriteIdx].parent = atoi(line + strlen("parent="));
+                    } else if (strstr(line, "color=") == line) {
+                        sscanf(line + strlen("color="), "%f,%f,%f", &obj.sprites[spriteIdx].r, &obj.sprites[spriteIdx].g, &obj.sprites[spriteIdx].b);
+                    }
                 }
             }
             lineNum++;
@@ -490,6 +524,7 @@ int main(int argc, char* argv[]) {
         objTextCursor += sprintf(objTextCursor, "food=%d\n", obj.food);
         objTextCursor += sprintf(objTextCursor, "speed=%f\n", obj.speed);
         objTextCursor += sprintf(objTextCursor, "clothing=%c\n", obj.clothing);
+        objTextCursor += sprintf(objTextCursor, "numUses=%d\n", obj.numUses);
         objTextCursor += sprintf(objTextCursor, "numSlots=%d\n", obj.numSlots);
         objTextCursor += sprintf(objTextCursor, "numSprites=%d\n", obj.numSprites);
         objTextCursor += sprintf(objTextCursor, "pixHeight=%d\n", obj.pixHeight);
