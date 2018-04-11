@@ -5,11 +5,7 @@
 //   - Group ingredients.
 //   - Identify reusable ingredients/products.
 //   - Improve overall style.
-
-// DepTree constraints:
-// 1. Node with parent indent >= max child indent + 1
-// 2. Left child indent >= Right child indent + 1
-// 3. Right child indent = max(Right child's right child indent, Right child's left child indent) + 1
+//   - Take numUses and LastUse transitions into account.
 
 function DataLoader() {
     this.callbacks = [];
@@ -17,6 +13,7 @@ function DataLoader() {
         maxBiome: 0,
         transitions: [],
         creationTransitions: [],
+        usageTransitions: [],
         spriteInfo: [],
         objects: [],
         techTree: []
@@ -73,8 +70,12 @@ DataLoader.prototype.parseFile = function(body) {
                     newActorId: parseInt(parts[2], 10),
                     newTargetId: parseInt(parts[3], 10),
                     timer: parseInt(parts[4], 10),
-                    lastUseActor: parseInt(parts[5], 10),
-                    lastUseTarget: parseInt(parts[6], 10)
+                    reverseUseActor: parseInt(parts[5], 10),
+                    reverseUseTarget: parseInt(parts[6], 10),
+                    requireUnusedActor: parseInt(parts[7], 10),
+                    requireUnusedTarget: parseInt(parts[8], 10),
+                    lastUseActor: parseInt(parts[9], 10),
+                    lastUseTarget: parseInt(parts[10], 10)
                 };
                 this.data.transitions.push(transition);
             }
@@ -100,6 +101,12 @@ DataLoader.prototype.parseFile = function(body) {
             if (line == "=====") {
                 if (curObj) {
                     curObj.held = !curObj.permanent;
+                    if (curObj.spriteAppearOrder && curObj.spriteAppearOrder.length > curObj.numUses) {
+                        curObj.spriteAppearOrder = null;
+                    }
+                    if (curObj.spriteHideOrder && curObj.spriteHideOrder.length > curObj.numUses) {
+                        curObj.spriteHideOrder = null;
+                    }
                     this.data.objects[curObj.id] = curObj;
                 }
                 curObj = {
@@ -120,7 +127,9 @@ DataLoader.prototype.parseFile = function(body) {
                     pixHeight: 0,
                     held: 0,
                     techLevel: -1,
-                    sprites: []
+                    sprites: [],
+                    spriteAppearOrder: null,
+                    spriteHideOrder: null
                 };
                 for (var b = 0; b <= this.data.maxBiome; ++b) {
                     curObj.biomes.push(0);
@@ -165,7 +174,7 @@ DataLoader.prototype.parseFile = function(body) {
                     curObj.pixHeight = parseInt(line.slice(10), 10);
                 } else if (line.startsWith("held=")) {
                     curObj.held = parseInt(line.slice(5), 10);
-                } else if (line.startsWith("sprite=")){ 
+                } else if (line.startsWith("sprite=")) {
                     var parts = line.slice(7).split(",");
                     var sprite = {
                         id: parseInt(parts[0], 10),
@@ -176,9 +185,23 @@ DataLoader.prototype.parseFile = function(body) {
                         parent: parseInt(parts[5], 10),
                         r: parseFloat(parts[6]),
                         g: parseFloat(parts[7]),
-                        b: parseFloat(parts[8])
+                        b: parseFloat(parts[8]),
+                        info: null
                     };
+                    sprite.info = this.data.spriteInfo[sprite.id];
                     curObj.sprites.push(sprite);
+                } else if (line.startsWith("spriteAppearOrder=")) {
+                    var parts = line.slice(18).split(",");
+                    curObj.spriteAppearOrder = [];
+                    for (var p = 0; p < parts.length; ++p) {
+                        curObj.spriteAppearOrder.push(parseInt(parts[p], 10));
+                    }
+                } else if (line.startsWith("spriteHideOrder=")) {
+                    var parts = line.slice(16).split(",");
+                    curObj.spriteHideOrder = [];
+                    for (var p = 0; p < parts.length; ++p) {
+                        curObj.spriteHideOrder.push(parseInt(parts[p], 10));
+                    }
                 } else {
                     console.error("Unknown param on line", i+1);
                 }
@@ -193,11 +216,36 @@ DataLoader.prototype.postprocessData = function() {
         var t = this.data.transitions[i];
         if (!([-2, -1, 0, t.actorId].includes(t.newActorId))) {
             this.data.creationTransitions[t.newActorId] = (this.data.creationTransitions[t.newActorId] || []);
-            this.data.creationTransitions[t.newActorId].push([t.actorId, t.targetId, 0, i]);
+            this.data.creationTransitions[t.newActorId].push({
+                type: "actor",
+                transition: t
+            });
         }
         if (!([-2, -1, 0, t.targetId].includes(t.newTargetId))) {
             this.data.creationTransitions[t.newTargetId] = (this.data.creationTransitions[t.newTargetId] || []);
-            this.data.creationTransitions[t.newTargetId].push([t.actorId, t.targetId, 1, i]);
+            this.data.creationTransitions[t.newTargetId].push({
+                type: "target",
+                transition: t
+            });
+        }
+    }
+
+    // Gather usage transitions
+    for (var i = 0; i < this.data.transitions.length; ++i) {
+        var t = this.data.transitions[i];
+        if (t.actorId == t.newActorId && ![-2, -1, 0].includes(t.actorId) && this.data.objects[t.actorId].numUses > 1) {
+            this.data.usageTransitions[t.actorId] = (this.data.usageTransitions[t.actorId] || []);
+            this.data.usageTransitions[t.actorId].push({
+                type: "actor",
+                transition: t
+            });
+        }
+        if (t.targetId == t.newTargetId && ![-2, -1, 0].includes(t.targetId) && this.data.objects[t.targetId].numUses > 1) {
+            this.data.usageTransitions[t.targetId] = (this.data.usageTransitions[t.targetId] || []);
+            this.data.usageTransitions[t.targetId].push({
+                type: "target",
+                transition: t
+            });
         }
     }
 
@@ -239,7 +287,7 @@ DataLoader.prototype.postprocessData = function() {
             var ct = this.data.creationTransitions[id];
             if (ct) {
                 for (var t = 0; !found && t < ct.length; ++t) {
-                    if (sortedIds.includes(ct[t][0]) && sortedIds.includes(ct[t][1])) {
+                    if (sortedIds.includes(ct[t].transition.actorId) && sortedIds.includes(ct[t].transition.targetId)) {
                         this.data.techTree[techLevel].push(id);
                         this.data.objects[id].techLevel = techLevel;
                         newSortedIds.push(id);
@@ -285,8 +333,14 @@ DataLoader.prototype.postprocessData = function() {
                 var ct = this.data.creationTransitions[id];
                 if (ct) {
                     for (var t = 0; t < ct.length; ++t) {
-                        var objType = ct[t][2];
-                        var candidate = this.data.objects[ct[t][objType]];
+                        var objType = ct[t].type;
+                        var candidateId;
+                        if (objType == "actor") {
+                            candidateId = ct[t].transition.actorId;
+                        } else {
+                            candidateId = ct[t].transition.targetId;
+                        }
+                        var candidate = this.data.objects[candidateId];
                         if (candidate && !candidate.held && candidate.biomes.includes(1)) {
                             for (var b = 0; b <= this.data.maxBiome; ++b) {
                                 this.data.objects[id].biomes[b] |= candidate.biomes[b];
@@ -623,7 +677,7 @@ TechTreeView.prototype.renderStep = function() {
             var objIds = this.renderData.toRender[this.renderData.levelIdx][1];
             while (this.renderData.objIdx < objIds.length) {
                 var objId = objIds[this.renderData.objIdx++];
-                this.renderData.curLevelEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[objId], 150, 150, true));
+                this.renderData.curLevelEl.appendChild(createObjectElement(this.data.objects[objId], 150, 150, true));
                 if (this.renderData.objIdx == objIds.length) {
                     this.renderData.levelIdx++;
                     this.renderData.objIdx = 0;
@@ -704,15 +758,15 @@ RecipeView.prototype.getNodeName = function(node) {
         if (name.startsWith("@")) {
             name = name.replace("@", "Any");
         }
+        if (node.numUsed > 0) {
+            name += " [" + node.numUsed + "]";
+        }
     } else if (id == -2 && type == "actor") {
         name = "Touch";
     } else if (id == -2 && type == "target") {
         name = "Nothing";
     } else if (id == -1 && type == "actor") {
-        if (node.transitionIdx >= 0) {
-            var time = this.data.transitions[node.transitionIdx].timer;
-        }
-        name = prettyTimeString(time);
+        name = prettyTimeString(node.timer);
     } else if (id == -1 && type == "target") {
         name = "Remove";
     } else if (id == 0 && type == "actor") {
@@ -730,7 +784,7 @@ RecipeView.prototype.startRecipe = function(id) {
     this.recipeTree = this.makeNode(id);
     if (this.data) {
         this.targetObjectContainer.innerHTML = "";
-        this.targetObjectContainer.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[id], 200, 200, true, "long"));
+        this.targetObjectContainer.appendChild(createObjectElement(this.data.objects[id], 200, 200, true, "long"));
         this.populateTransitions(this.recipeTree);
         this.updateRecipeUI();
     }
@@ -807,39 +861,123 @@ RecipeView.prototype.triggerStateChanged = function() {
     }
 };
 
-RecipeView.prototype.makeNode = function(id, type, transitionIdx, transitions, selected) {
+RecipeView.prototype.makeNode = function(id, type, numUsed, timer, transitions, selected) {
     return {
         id: id,
+        numUsed: numUsed || 0,
+        timer: timer || 0,
         type: type,
-        transitionIdx: (transitionIdx === undefined ? -1 : transitionIdx),
         transitions: (transitions || []),
         selected: (selected === undefined ? -1 : selected)
     };
 };
 
+RecipeView.prototype.getTransitionsForObject = function(id, numUsed) {
+    var allTransitions = [];
+    var creationMode = "none";
+    var usageMode = "none";
+    if (this.data.objects[id].numUses <= 1) {
+        creationMode = "all";
+        usageMode = "none";
+    } else if (numUsed == 0) {
+        creationMode = "no_reverse";
+        usageMode = "reverse";
+    } else if (numUsed == this.data.objects[id].numUses - 1) {
+        creationMode = "reverse";
+        usageMode = "no_reverse"; // We assume that the last use will always transition to a different object.
+    } else if (numUsed > 0 && numUsed < this.data.objects[id].numUses - 1) {
+        creationMode = "none";
+        usageMode = "all";
+    }
+    if (creationMode != "none") {
+        var ct = this.data.creationTransitions[id];
+        if (ct) {
+            if (creationMode == "all") {
+                allTransitions = allTransitions.concat(ct);
+            } else {
+                var desiredReverse = creationMode == "reverse";
+                for (var i = 0; i < ct.length; ++i) {
+                    var reverse = false;
+                    if (ct[i].type == "actor") {
+                        reverse = ct[i].transition.reverseUseActor;
+                    } else {
+                        reverse = ct[i].transition.reverseUseTarget;
+                    }
+                    if (reverse == desiredReverse) {
+                        allTransitions.push(ct[i]);
+                    }
+                }
+            }
+        }
+    }
+    if (usageMode != "none") {
+        var ut = this.data.usageTransitions[id];
+        if (ut) {
+            if (usageMode == "all") {
+                allTransitions = allTransitions.concat(ut);
+            } else {
+                var desiredReverse = usageMode == "reverse";
+                for (var i = 0; i < ut.length; ++i) {
+                    var reverse = false;
+                    if (ut[i].type == "actor") {
+                        reverse = ut[i].transition.reverseUseActor;
+                    } else {
+                        reverse = ut[i].transition.reverseUseTarget;
+                    }
+                    if (reverse == desiredReverse) {
+                        allTransitions.push(ut[i]);
+                    }
+                }
+            }
+        }
+    }
+    return allTransitions;
+};
+
 RecipeView.prototype.populateTransitions = function(node) {
     if (node.transitions.length == 0) {
-        var ct = this.data.creationTransitions[node.id];
-        if (ct) {
-            for (var i = 0; i < ct.length; ++i) {
-                node.transitions.push([
-                    this.makeNode(ct[i][0], "actor", ct[i][3]),
-                    this.makeNode(ct[i][1], "target", ct[i][3])
-                ]);
+        if (this.data.objects[node.id]) {
+            var allTransitions = this.getTransitionsForObject(node.id, node.numUsed);
+            if (this.data.objects[node.id].name[0] == "@") {
+                for (var id = 0; id < this.data.objects.length; ++id) {
+                    if (this.data.objects[id] && this.data.objects[id].categories.includes(node.id)) {
+                        allTransitions = allTransitions.concat(this.getTransitionsForObject(id, node.numUsed));
+                        // TODO: This is wrong. It merges transitions from different objects in a weird way.
+                        // Need to select a specific object to do this right.
+                    }
+                }
             }
-        } else if (this.data.objects[node.id] && this.data.objects[node.id].name[0] == "@") {
-            for (var id = 0; id < this.data.objects.length; ++id) {
-                if (this.data.objects[id] && this.data.objects[id].categories.includes(node.id)) {
-                    ct = this.data.creationTransitions[id];
-                    if (ct) {
-                        for (var i = 0; i < ct.length; ++i) {
-                            node.transitions.push([
-                                this.makeNode(ct[i][0], "actor", ct[i][3]),
-                                this.makeNode(ct[i][1], "target", ct[i][3])
-                            ]);
+
+            for (var i = 0; i < allTransitions.length; ++i) {
+                var t = allTransitions[i];
+                var actorUsed = 0;
+                if (![-2, -1, 0].includes(t.transition.actorId) && this.data.objects[t.transition.actorId].numUses > 1) {
+                    if (t.type == "actor" && t.transition.actorId == node.id) {
+                        actorUsed = node.numUsed + (t.transition.reverseUseActor ? 1 : -1);
+                    } else if (t.transition.lastUseActor) {
+                        if (!t.transition.reverseUseActor) {
+                            actorUsed = this.data.objects[t.transition.actorId].numUses - 1;
                         }
                     }
                 }
+                var targetUsed = 0;
+                if (![-2, -1, 0].includes(t.transition.targetId) && this.data.objects[t.transition.targetId].numUses > 1) {
+                    if (t.type == "target" && t.transition.targetId == node.id) {
+                        targetUsed = node.numUsed + (t.transition.reverseUseTarget ? 1 : -1);
+                    } else if (t.transition.lastUseTarget) {
+                        if (!t.transition.reverseUseTarget) {
+                            targetUsed = this.data.objects[t.transition.targetId].numUses - 1;
+                        }
+
+                    }
+                }
+                var actorNode = this.makeNode(t.transition.actorId, "actor", actorUsed, (t.transition.actorId == -1 ? t.transition.timer : 0));
+                var targetNode = this.makeNode(t.transition.targetId, "target", targetUsed);
+
+                node.transitions.push([
+                    actorNode,
+                    targetNode
+                ]);
             }
         }
         if (node.transitions.length > 0) {
@@ -875,7 +1013,7 @@ RecipeView.prototype.modifyNode = function(el, node, ev) {
         var headerEl = document.createElement("DIV");
         headerEl.classList.add("tree_header");
 
-        headerEl.appendChild(createObjectElement(this.data.spriteInfo, this.data.objects[node.id], 120, 120, false, "none"));
+        headerEl.appendChild(createObjectElement(this.data.objects[node.id], 120, 120, false, "none", node.numUsed));
         this.treeEl.appendChild(headerEl);
 
         var gotIt = document.createElement("DIV");
@@ -895,9 +1033,9 @@ RecipeView.prototype.modifyNode = function(el, node, ev) {
             if (node.selected == i) {
                 transitionEl.classList.add("selected");
             }
-            transitionEl.appendChild(createObjectElementById(this.data.spriteInfo, this.data.objects, t[0].id, "actor", this.data.transitions[t[0].transitionIdx].timer, 120, 120));
+            transitionEl.appendChild(createObjectElementById(this.data.objects, t[0].id, "actor", t[0].timer, t[0].numUsed, 120, 120));
             transitionEl.appendChild(document.createTextNode("+"));
-            transitionEl.appendChild(createObjectElementById(this.data.spriteInfo, this.data.objects, t[1].id, "target", null, 120, 120));
+            transitionEl.appendChild(createObjectElementById(this.data.objects, t[1].id, "target", null, t[1].numUsed, 120, 120));
             transitionEl.addEventListener("click", this.selectNodeChild.bind(this, i));
             this.treeEl.appendChild(transitionEl);
         }
@@ -1141,10 +1279,10 @@ nameEl.classList.add("name");
 objectPrototype.appendChild(nameEl);
 
 
-function createObjectElementById(spriteInfo, objects, id, type, time, width, height) {
+function createObjectElementById(objects, id, type, time, numUsed, width, height) {
     var result = null;
     if (id > 0 && objects[id]) {
-        result = createObjectElement(spriteInfo, objects[id], width, height, false);
+        result = createObjectElement(objects[id], width, height, false, null, numUsed);
     } else if (id == -2 && type == "actor") {
         result = objectPrototype.cloneNode(true);
         result.querySelector(".name").textContent = "Bother";
@@ -1185,17 +1323,17 @@ function createObjectElementById(spriteInfo, objects, id, type, time, width, hei
     return result;
 };
 
-function getSpritePos(spriteInfo, obj, idx) {
-    var id = obj.sprites[idx].id;
+function getSpritePos(obj, idx) {
     var result = {
-        x: obj.sprites[idx].x - spriteInfo[id].centerX,
-        y: obj.sprites[idx].y - spriteInfo[id].centerY
+        x: obj.sprites[idx].x - obj.sprites[idx].info.centerX,
+        y: obj.sprites[idx].y - obj.sprites[idx].info.centerY
     };
 
     return result;
 }
 
-function createObjectElement(spriteInfo, obj, width, height, withInfo, nameType) {
+function createObjectElement(obj, width, height, withInfo, nameType, numUsed) {
+    numUsed = numUsed || 0;
     if (height && nameType != "none") {
         height -= 30;
     }
@@ -1215,11 +1353,11 @@ function createObjectElement(spriteInfo, obj, width, height, withInfo, nameType)
     var minY = 1000000;
     var maxY = -1000000;
     for (var i = 0; i < obj.sprites.length; ++i) {
-        var w = spriteInfo[obj.sprites[i].id].width;
-        var h = spriteInfo[obj.sprites[i].id].height;
-        var pos = getSpritePos(spriteInfo, obj, i);
-        pos.x += (obj.sprites[i].hFlip ? 1 : -1) * spriteInfo[obj.sprites[i].id].anchorX;
-        pos.y += spriteInfo[obj.sprites[i].id].anchorY;
+        var w = obj.sprites[i].info.width;
+        var h = obj.sprites[i].info.height;
+        var pos = getSpritePos(obj, i);
+        pos.x += (obj.sprites[i].hFlip ? 1 : -1) * obj.sprites[i].info.anchorX;
+        pos.y += obj.sprites[i].info.anchorY;
         minX = Math.min(pos.x, minX);
         maxX = Math.max(pos.x + w, maxX);
         minY = Math.min(pos.y, minY);
@@ -1311,9 +1449,9 @@ function createObjectElement(spriteInfo, obj, width, height, withInfo, nameType)
         var img = document.createElement("DIV");
         var spriteId = obj.sprites[i].id;
         img.style.backgroundImage = "url(sprites/" + spriteId + ".png)";
-        img.style.width = spriteInfo[spriteId].width;
-        img.style.height = spriteInfo[spriteId].height;
-        var pos = getSpritePos(spriteInfo, obj, i);
+        img.style.width = obj.sprites[i].info.width;
+        img.style.height = obj.sprites[i].info.height;
+        var pos = getSpritePos(obj, i);
         img.style.left = -minX + paddingX + pos.x + "px";
         img.style.bottom = -minY + paddingY + pos.y + "px";
         var transform = "";
@@ -1321,7 +1459,7 @@ function createObjectElement(spriteInfo, obj, width, height, withInfo, nameType)
         if (obj.sprites[i].hFlip) {
             transform += "scaleX(-1) ";
         }
-        transform += "translate(" + -spriteInfo[obj.sprites[i].id].anchorX + "px, " + -spriteInfo[obj.sprites[i].id].anchorY + "px)";
+        transform += "translate(" + -obj.sprites[i].info.anchorX + "px, " + -obj.sprites[i].info.anchorY + "px)";
         img.style.transform = transform;
         if (!obj.name.startsWith("@") && (obj.sprites[i].r != 1.0 || obj.sprites[i].g != 1.0 || obj.sprites[i].b != 1.0)) {
             var r = Math.floor(255*obj.sprites[i].r);
@@ -1333,6 +1471,27 @@ function createObjectElement(spriteInfo, obj, width, height, withInfo, nameType)
             img.style["-webkit-mask"] = img.style.mask;
         }
         spriteContainer.appendChild(img);
+    }
+
+    if (obj.spriteAppearOrder) {
+        for (var i = 0; i < obj.spriteAppearOrder.length; ++i) {
+            var spriteIdx = obj.spriteAppearOrder[i];
+            if (i >= numUsed) {
+                spriteContainer.children[spriteIdx].style.display = "none";
+            } else {
+                spriteContainer.children[spriteIdx].style.display = "block";
+            }
+        }
+    }
+    if (obj.spriteHideOrder) {
+        for (var i = 0; i < obj.spriteHideOrder.length; ++i) {
+            var spriteIdx = obj.spriteHideOrder[i];
+            if (i >= numUsed) {
+                spriteContainer.children[spriteIdx].style.display = "block";
+            } else {
+                spriteContainer.children[spriteIdx].style.display = "none";
+            }
+        }
     }
 
     return el;

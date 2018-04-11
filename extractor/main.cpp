@@ -11,6 +11,10 @@ struct Transition {
     int newActorId;
     int newTargetId;
     int timer;
+    int reverseUseActor;
+    int reverseUseTarget;
+    bool requireUnusedActor;
+    bool requireUnusedTarget;
     bool lastUseActor;
     bool lastUseTarget;
 };
@@ -62,6 +66,8 @@ struct Object {
     int pixHeight;
     float heldX;
     float heldY;
+    int spriteAppearOrder[NUM_SPRITES];
+    int spriteHideOrder[NUM_SPRITES];
 };
 
 #define NUM_OBJ_IN_CAT 100
@@ -198,24 +204,38 @@ int main(int argc, char* argv[]) {
             tr.lastUseTarget = true;
         }
 
-        sscanf(fileContents, "%d %d %d", &tr.newActorId, &tr.newTargetId, &tr.timer);
+        float actorMinUseFraction;
+        float targetMinUseFraction;
+        int move;
+        sscanf(fileContents, "%d %d %d %f %f %d %d %d",
+                &tr.newActorId,
+                &tr.newTargetId,
+                &tr.timer,
+                &actorMinUseFraction,
+                &targetMinUseFraction,
+                &tr.reverseUseActor,
+                &tr.reverseUseTarget,
+                &move);
+        tr.requireUnusedActor = (actorMinUseFraction > 0.0f);
+        tr.requireUnusedTarget = (targetMinUseFraction > 0.0f);
+        // TODO: Consider filtering out `move` transitions
         transitions[numTransitions++] = tr;
-        if (tr.actorId >= 0) {
+        if (tr.actorId > 0) {
             int id = tr.actorId;
             requiredObjects[id] = true;
             maxObjId = (maxObjId < id ? id : maxObjId);
         }
-        if (tr.targetId >= 0) {
+        if (tr.targetId > 0) {
             int id = tr.targetId;
             requiredObjects[id] = true;
             maxObjId = (maxObjId < id ? id : maxObjId);
         }
-        if (tr.newActorId >= 0) {
+        if (tr.newActorId > 0) {
             int id = tr.newActorId;
             requiredObjects[id] = true;
             maxObjId = (maxObjId < id ? id : maxObjId);
         }
-        if (tr.newTargetId >= 0) {
+        if (tr.newTargetId > 0) {
             int id = tr.newTargetId;
             requiredObjects[id] = true;
             maxObjId = (maxObjId < id ? id : maxObjId);
@@ -247,6 +267,8 @@ int main(int argc, char* argv[]) {
         CloseHandle(fileHandle);
 
         Object obj = {0};
+        obj.spriteAppearOrder[0] = -1;
+        obj.spriteHideOrder[0] = -1;
         char line[1000];
         char *cursor = fileContents;
         int lineNum = 0;
@@ -318,6 +340,60 @@ int main(int argc, char* argv[]) {
                     }
                 } else if (strstr(line, "pixHeight=") == line) {
                     obj.pixHeight = atoi(line + strlen("pixHeight="));
+                } else if (strstr(line, "useVanishIndex=") == line) {
+                    char *idxCursor = line + strlen("useVanishIndex=");
+                    int spriteHideOrderIdx = 0;
+                    if (*idxCursor != '-') {
+                        while (true) {
+                            int sIdx = 0;
+                            while (*idxCursor && *idxCursor > '0' && *idxCursor < '9') {
+                                sIdx *= 10;
+                                sIdx += *idxCursor - '0';
+                                idxCursor++;
+                            }
+                            obj.spriteHideOrder[spriteHideOrderIdx++] = sIdx;
+                            if (spriteHideOrderIdx >= NUM_SPRITES) {
+                                printf("ERROR - Too many items in useVanishIndex for object %d\n", obj.id);
+                                obj.spriteHideOrder[spriteHideOrderIdx-1] = -1;
+                                break;
+                            }
+                            if (*idxCursor == ',') {
+                                idxCursor++;
+                            } else {
+                                obj.spriteHideOrder[spriteHideOrderIdx] = -1;
+                                break;
+                            }
+                        }
+                    } else {
+                        obj.spriteHideOrder[0] = -1;
+                    }
+                } else if (strstr(line, "useAppearIndex=") == line) {
+                    char *idxCursor = line + strlen("useAppearIndex=");
+                    int spriteAppearOrderIdx = 0;
+                    if (*idxCursor != '-') {
+                        while (true) {
+                            int sIdx = 0;
+                            while (*idxCursor && *idxCursor > '0' && *idxCursor < '9') {
+                                sIdx *= 10;
+                                sIdx += *idxCursor - '0';
+                                idxCursor++;
+                            }
+                            obj.spriteAppearOrder[spriteAppearOrderIdx++] = sIdx;
+                            if (spriteAppearOrderIdx >= NUM_SPRITES) {
+                                printf("ERROR - Too many items in useAppearIndex for object %d\n", obj.id);
+                                obj.spriteAppearOrder[spriteAppearOrderIdx-1] = -1;
+                                break;
+                            }
+                            if (*idxCursor == ',') {
+                                idxCursor++;
+                            } else {
+                                obj.spriteAppearOrder[spriteAppearOrderIdx] = -1;
+                                break;
+                            }
+                        }
+                    } else {
+                        obj.spriteAppearOrder[0] = -1;
+                    }
                 } else if (strstr(line, "heldOffset=") == line) {
                     sscanf(line + strlen("heldOffset="), "%f,%f", &obj.heldX, &obj.heldY);
                 } else if (spriteIdx >= 0) {
@@ -456,7 +532,7 @@ int main(int argc, char* argv[]) {
         char line[1000];
         Transition tr = transitions[i];
         memset(line, 0, sizeof(line));
-        sprintf(line, "%d %d %d %d %d %d %d\n", tr.actorId, tr.targetId, tr.newActorId, tr.newTargetId, tr.timer, (tr.lastUseActor ? 1 : 0), (tr.lastUseTarget ? 1 : 0));
+        sprintf(line, "%d %d %d %d %d %d %d %d, %d, %d %d\n", tr.actorId, tr.targetId, tr.newActorId, tr.newTargetId, tr.timer, tr.reverseUseActor, tr.reverseUseTarget, (tr.requireUnusedActor ? 1 : 0), (tr.requireUnusedTarget ? 1 : 0), (tr.lastUseActor ? 1 : 0), (tr.lastUseTarget ? 1 : 0));
         if (WriteFile(writeHandle, line, (DWORD)strlen(line), NULL, NULL) == 0) {
             printf("ERROR writing transitions file\n");
             return 1;
@@ -533,6 +609,27 @@ int main(int argc, char* argv[]) {
         for (int s = 0; s < obj.numSprites; ++s) {
             objTextCursor += sprintf(objTextCursor, "sprite=%d,%f,%f,%f,%d,%d,%f,%f,%f\n", obj.sprites[s].id, obj.sprites[s].x, obj.sprites[s].y, obj.sprites[s].rot, obj.sprites[s].hFlip ? 1 : 0, obj.sprites[s].parent, obj.sprites[s].r, obj.sprites[s].g, obj.sprites[s].b);
         }
+        if (obj.spriteAppearOrder[0] != -1) {
+            objTextCursor += sprintf(objTextCursor, "spriteAppearOrder=");
+            for (int idx = 0; idx < NUM_SPRITES && obj.spriteAppearOrder[idx] != -1; ++idx) {
+                if (idx != 0) {
+                    objTextCursor += sprintf(objTextCursor, ",");
+                }
+                objTextCursor += sprintf(objTextCursor, "%d", obj.spriteAppearOrder[idx]);
+            }
+            objTextCursor += sprintf(objTextCursor, "\n");
+        }
+        if (obj.spriteHideOrder[0] != -1) {
+            objTextCursor += sprintf(objTextCursor, "spriteHideOrder=");
+            for (int idx = 0; idx < NUM_SPRITES && obj.spriteHideOrder[idx] != -1; ++idx) {
+                if (idx != 0) {
+                    objTextCursor += sprintf(objTextCursor, ",");
+                }
+                objTextCursor += sprintf(objTextCursor, "%d", obj.spriteHideOrder[idx]);
+            }
+            objTextCursor += sprintf(objTextCursor, "\n");
+        }
+
         objTextCursor += sprintf(objTextCursor, "=====\n");
 
         if (WriteFile(writeHandle, objText, (DWORD)strlen(objText), NULL, NULL) == 0) {
