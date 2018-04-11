@@ -16,6 +16,7 @@ function DataLoader() {
         usageTransitions: [],
         spriteInfo: [],
         objects: [],
+        categories: [],
         techTree: []
     };
 
@@ -107,6 +108,9 @@ DataLoader.prototype.parseFile = function(body) {
                     if (curObj.spriteHideOrder && curObj.spriteHideOrder.length > curObj.numUses) {
                         curObj.spriteHideOrder = null;
                     }
+                    if (curObj.numUses > 1 && !curObj.spriteAppearOrder) {
+                        curObj.additive = false;
+                    }
                     this.data.objects[curObj.id] = curObj;
                 }
                 curObj = {
@@ -129,7 +133,8 @@ DataLoader.prototype.parseFile = function(body) {
                     techLevel: -1,
                     sprites: [],
                     spriteAppearOrder: null,
-                    spriteHideOrder: null
+                    spriteHideOrder: null,
+                    additive: true
                 };
                 for (var b = 0; b <= this.data.maxBiome; ++b) {
                     curObj.biomes.push(0);
@@ -152,7 +157,10 @@ DataLoader.prototype.parseFile = function(body) {
                 } else if (line.startsWith("categories=")) {
                     var cats = line.slice(11).split(",");
                     for (var c = 0; c < cats.length; ++c) {
-                        curObj.categories.push(parseInt(cats[c], 10));
+                        var categoryId = parseInt(cats[c], 10);
+                        this.data.categories[categoryId] = (this.data.categories[categoryId] || []);
+                        this.data.categories[categoryId].push(curObj.id);
+                        curObj.categories.push(categoryId);
                     }
                 } else if (line.startsWith("heat=")) {
                     curObj.heat = parseInt(line.slice(5), 10);
@@ -211,6 +219,48 @@ DataLoader.prototype.parseFile = function(body) {
 };
 
 DataLoader.prototype.postprocessData = function() {
+    // Expand category transitions
+    var categoryIds = [];
+    for (var i = 0; i < this.data.objects.length; ++i) {
+        if (this.data.objects[i] && this.data.objects[i].name[0] == "@") {
+            categoryIds.push(i);
+        }
+    }
+    var newTransitions = [];
+    for (var i = 0; i < this.data.transitions.length; ++i) {
+        var t = this.data.transitions[i];
+        if (categoryIds.includes(t.actorId)) {
+            var actors = this.data.categories[t.actorId];
+            for (var actorIdx = 0; actorIdx < actors.length; ++actorIdx) {
+                var newT = Object.assign({}, t, { actorId: actors[actorIdx] });
+                if (t.actorId == t.newActorId) {
+                    newT.newActorId = newT.actorId;
+                }
+                newTransitions.push(newT);
+            }
+        } else {
+            newTransitions.push(t);
+        }
+    }
+    this.data.transitions = newTransitions;
+    newTransitions = [];
+    for (var i = 0; i < this.data.transitions.length; ++i) {
+        var t = this.data.transitions[i];
+        if (categoryIds.includes(t.targetId)) {
+            var targets = this.data.categories[t.targetId];
+            for (var targetIdx = 0; targetIdx < targets.length; ++targetIdx) {
+                var newT = Object.assign({}, t, { targetId: targets[targetIdx] });
+                if (t.targetId == t.newTargetId) {
+                    newT.newTargetId = newT.targetId;
+                }
+                newTransitions.push(newT);
+            }
+        } else {
+            newTransitions.push(t);
+        }
+    }
+    this.data.transitions = newTransitions;
+
     // Gather creation transitions
     for (var i = 0; i < this.data.transitions.length; ++i) {
         var t = this.data.transitions[i];
@@ -754,12 +804,9 @@ RecipeView.prototype.getNodeName = function(node) {
     var type = node.type;
     var name = "";
     if (id > 0 && this.data && this.data.objects[id]) {
-        name = this.data.objects[id].name;
+        name = getObjectName(this.data.objects[id], node.numUsed);
         if (name.startsWith("@")) {
             name = name.replace("@", "Any");
-        }
-        if (node.numUsed > 0) {
-            name += " [" + node.numUsed + "]";
         }
     } else if (id == -2 && type == "actor") {
         name = "Touch";
@@ -1332,13 +1379,24 @@ function getSpritePos(obj, idx) {
     return result;
 }
 
+function getObjectName(obj, numUsed) {
+    var nameNumUsed = (obj.additive ? numUsed : obj.numUses - numUsed);
+    var numUsedString = "";
+    if (nameNumUsed > 0) {
+        numUsedString = " [";
+        numUsedString += nameNumUsed;
+        numUsedString += "]";
+    }
+    return obj.name + numUsedString;
+}
+
 function createObjectElement(obj, width, height, withInfo, nameType, numUsed) {
     numUsed = numUsed || 0;
     if (height && nameType != "none") {
         height -= 30;
     }
     var el = objectPrototype.cloneNode(true);
-    el.setAttribute("title", obj.name);
+    el.setAttribute("title", getObjectName(obj, numUsed));
     el.setAttribute("data-obj-id", obj.id);
     var biomeEls = el.querySelector(".biomes").children;
     for (var i = 0; i < biomeEls.length; ++i) {
@@ -1402,7 +1460,7 @@ function createObjectElement(obj, width, height, withInfo, nameType, numUsed) {
     if (nameType == "none") {
         el.removeChild(nameEl);
     } else {
-        nameEl.textContent = obj.name;
+        nameEl.textContent = getObjectName(obj, numUsed);
         if (nameType != "long") {
             nameEl.style.width = spriteContainer.style.width;
         }
