@@ -346,7 +346,7 @@ int main(int argc, char* argv[]) {
                     if (*idxCursor != '-') {
                         while (true) {
                             int sIdx = 0;
-                            while (*idxCursor && *idxCursor > '0' && *idxCursor < '9') {
+                            while (*idxCursor && *idxCursor >= '0' && *idxCursor <= '9') {
                                 sIdx *= 10;
                                 sIdx += *idxCursor - '0';
                                 idxCursor++;

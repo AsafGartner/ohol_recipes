@@ -102,10 +102,10 @@ DataLoader.prototype.parseFile = function(body) {
             if (line == "=====") {
                 if (curObj) {
                     curObj.held = !curObj.permanent;
-                    if (curObj.spriteAppearOrder && curObj.spriteAppearOrder.length > curObj.numUses) {
+                    if (curObj.spriteAppearOrder && (curObj.numUses <= 1 || curObj.spriteAppearOrder.length > curObj.numUses)) {
                         curObj.spriteAppearOrder = null;
                     }
-                    if (curObj.spriteHideOrder && curObj.spriteHideOrder.length > curObj.numUses) {
+                    if (curObj.spriteHideOrder && (curObj.numUses <= 1 || curObj.spriteHideOrder.length > curObj.numUses)) {
                         curObj.spriteHideOrder = null;
                     }
                     if (curObj.numUses > 1 && !curObj.spriteAppearOrder) {
@@ -1544,7 +1544,7 @@ function createObjectElement(obj, width, height, withInfo, nameType, numUsed) {
     if (obj.spriteHideOrder) {
         for (var i = 0; i < obj.spriteHideOrder.length; ++i) {
             var spriteIdx = obj.spriteHideOrder[i];
-            if (i >= numUsed) {
+            if (obj.spriteHideOrder.length - i - 1 >= numUsed) {
                 spriteContainer.children[spriteIdx].style.display = "block";
             } else {
                 spriteContainer.children[spriteIdx].style.display = "none";
