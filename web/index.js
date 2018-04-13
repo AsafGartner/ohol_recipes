@@ -1,11 +1,13 @@
 // TODO:
 // Recipe view:
-//   - Allow selection of specific object from category. (Maybe not??)
 //   - Highlight all steps that belong to the subtree of the currently hovered object.
 //   - Group ingredients.
 //   - Identify reusable ingredients/products.
 //   - Improve overall style.
-//   - Take numUses and LastUse transitions into account.
+// Goals for automatic recipe generation:
+//   - Minimum number of ingredients.
+//   - Reuse ingredients as much as possible.
+//   - Minimum number of steps.
 
 function DataLoader() {
     this.callbacks = [];
