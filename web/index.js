@@ -1528,7 +1528,6 @@ function createObjectElement(obj, width, height, withInfo, nameType, numUsed) {
     for (var i = 0; i < obj.sprites.length; ++i) {
         var img = document.createElement("DIV");
         var spriteId = obj.sprites[i].id;
-        // img.style.backgroundImage = "url(sprites/" + spriteId + ".png)";
         img.style.backgroundImage = "url(spritesheet.png)";
         img.style.backgroundPosition = -obj.sprites[i].info.x + "px " + -obj.sprites[i].info.y + "px";
         img.style.width = obj.sprites[i].info.width;
@@ -1549,9 +1548,9 @@ function createObjectElement(obj, width, height, withInfo, nameType, numUsed) {
             var b = Math.floor(255*obj.sprites[i].b);
             img.style.backgroundColor = "rgb(" + r + ", " + g + ", " + b + ")";
             img.style.backgroundBlendMode = "multiply";
-            // img.style.mask = "url(sprites/" + spriteId + ".png)";
-            img.style.mask = "url(spritesheet.png) " + -obj.sprites[i].info.x + "px " + -obj.sprites[i].info.y + "px";
-            img.style["-webkit-mask"] = img.style.mask;
+            var maskString = "url(spritesheet.png) " + -obj.sprites[i].info.x + "px " + -obj.sprites[i].info.y + "px";
+            img.style.mask = maskString;
+            img.style["-webkit-mask"] = maskString;
         }
         spriteContainer.appendChild(img);
     }
