@@ -2,8 +2,17 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 #define _CRT_SECURE_NO_WARNINGS 1
+
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "stb_rect_pack.h"
+
+#define STBI_MSC_SECURE_CRT
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 
 struct Transition {
     int actorId;
@@ -21,6 +30,8 @@ struct Transition {
 
 struct SpriteInfo {
     int id;
+    int x; // Position in spritesheet
+    int y; // Position in spritesheet
     int width;
     int height;
     int centerX;
@@ -53,6 +64,7 @@ struct Object {
     int categories[NUM_CATS];
     int id;
     int containSize;
+    float mapChance;
     bool biomes[NUM_BIOMES];
     int heat;
     float rValue;
@@ -84,6 +96,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    int totalSpriteArea = 0;
     bool requiredObjects[100000] = {};
     int maxObjId = -1;
     bool requiredSprites[100000] = {};
@@ -300,7 +313,8 @@ int main(int argc, char* argv[]) {
                 } else if (strstr(line, "containSize=") == line) {
                     obj.containSize = atoi(line+strlen("containSize="));
                 } else if (strstr(line, "mapChance=") == line) {
-                    if (atof(line + strlen("mapChance=")) > 0.0f) {
+                    obj.mapChance = (float)atof(line + strlen("mapChance="));
+                    if (obj.mapChance) {
                         lineCursor = strstr(line, "biomes") + strlen("biomes_");
                         while (*lineCursor) {
                             int biomeIdx = atoi(lineCursor);
@@ -420,6 +434,16 @@ int main(int argc, char* argv[]) {
 
     printf("Eating sprites...\n");
 
+    int numRequiredSprites = 0;
+    for (int i = 0; i <= maxSpriteId; ++i) {
+        if (requiredSprites[i]) {
+            numRequiredSprites++;
+        }
+    }
+
+    stbrp_rect* packRects = (stbrp_rect*)malloc(sizeof(stbrp_rect)*numRequiredSprites);
+    int currentPackRect = 0;
+
     for (int i = 0; i <= maxSpriteId; ++i) {
         if (requiredSprites[i]) {
             SpriteInfo info;
@@ -480,7 +504,7 @@ int main(int argc, char* argv[]) {
 
             bool topDown = fileContents[17] & (1 << 5);
 
-            char *imageDataStart = fileContents + 14;
+            char *imageDataStart = fileContents + 18;
             char *firstAlpha = imageDataStart + 3;
             int minX = info.width;
             int minY = info.height;
@@ -505,8 +529,104 @@ int main(int argc, char* argv[]) {
 
             info.centerX = (maxX + minX) / 2;
             info.centerY = (maxY + minY) / 2;
+            totalSpriteArea += info.width * info.height;
+            packRects[currentPackRect].id = info.id;
+            packRects[currentPackRect].w = (stbrp_coord)info.width;
+            packRects[currentPackRect].h = (stbrp_coord)info.height;
+            currentPackRect++;
             spriteInfos[numSpriteInfo++] = info;
         }
+    }
+
+    printf("Total Sprite Area: %d\n", totalSpriteArea);
+    int minSpritesheetSide = (int)ceil(sqrt(totalSpriteArea));
+    int spritesheetSide = 2;
+    while (spritesheetSide < minSpritesheetSide) {
+        spritesheetSide *= 2;
+    }
+    printf("Spritesheet size: %dx%d\n", spritesheetSide, spritesheetSide);
+    printf("Spritesheet extra area: %d%%\n", (int)((float)(spritesheetSide * spritesheetSide)/(float)totalSpriteArea * 100.0f));
+
+    stbrp_context packCtx = {0};
+    stbrp_node* packMemory = (stbrp_node*)malloc(sizeof(stbrp_node)*spritesheetSide);
+    stbrp_init_target(&packCtx, spritesheetSide, spritesheetSide, packMemory, spritesheetSide);
+    int packedSuccessfully = stbrp_pack_rects(&packCtx, packRects, numRequiredSprites);
+    if (packedSuccessfully) {
+        printf("Packed rects\n");
+    } else {
+        printf("Failed to pack rects\n");
+    }
+
+    printf("Producing spritesheet...\n");
+
+    unsigned char *ssData = (unsigned char *)malloc(4*spritesheetSide*spritesheetSide);
+    int ssStride = spritesheetSide*4;
+    memset(ssData, 0, 4*spritesheetSide*spritesheetSide);
+    for (int rectIdx = 0; rectIdx < numRequiredSprites; ++rectIdx) {
+        int spriteId = packRects[rectIdx].id;
+        SpriteInfo *info = 0;
+        for (int sIdx = 0; sIdx < numSpriteInfo; ++sIdx) {
+            if (spriteInfos[sIdx].id == spriteId) {
+                info = &spriteInfos[sIdx];
+                break;
+            }
+        }
+        if (!info) {
+            printf("ERROR - Can't find sprite info for id %d\n", spriteId);
+            continue;
+        }
+
+        info->x = packRects[rectIdx].x;
+        info->y = packRects[rectIdx].y;
+
+        char filename[MAX_PATH];
+        memset(filename, 0, sizeof(filename));
+        sprintf(filename, "%s\\sprites\\%d.tga", gamePath, spriteId);
+        HANDLE fileHandle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (fileHandle == INVALID_HANDLE_VALUE) {
+            printf("ERROR Can't open %d.tga to get sprite data\n", spriteId);
+            continue;
+        }
+
+        memset(fileContents, 0, FILE_CONTENTS_MAX);
+        if (ReadFile(fileHandle, fileContents, FILE_CONTENTS_MAX, NULL, NULL) == 0) {
+            printf("ERROR Can't read %d.tga to get sprite data\n", spriteId);
+            continue;
+        }
+        CloseHandle(fileHandle);
+
+        if (fileContents[1] != 0) {
+            printf("ERROR Image has a colormap %d\n", spriteId);
+            continue;
+        }
+
+        if (fileContents[2] != 2) {
+            printf("ERROR Image is not unmapped RGB %d\n", spriteId);
+        }
+
+        // bool topDown = fileContents[17] & (1 << 5);
+
+        unsigned char *imageDataStart = (unsigned char *)(fileContents + 18);
+        int srcStride = 4 * info->width;
+
+        for (int y = 0; y < info->height; ++y) {
+            for (int x = 0; x < info->width; ++x) {
+                unsigned char *src = imageDataStart + y * srcStride + x*4;
+                unsigned char *dst = ssData + (info->y + y) * ssStride + (info->x + x)*4;
+                dst[0] = src[2];
+                dst[1] = src[1];
+                dst[2] = src[0];
+                dst[3] = src[3];
+                // *(unsigned int*)dst = *(unsigned int*)src;
+            }
+        }
+    }
+
+    printf("Pooping spritesheet...\n");
+
+    int pngResult = stbi_write_png("spritesheet.png", spritesheetSide, spritesheetSide, 4, ssData, ssStride);
+    if (pngResult) {
+        printf("PNG written successfully\n");
     }
 
 
@@ -545,7 +665,7 @@ int main(int argc, char* argv[]) {
         char line[1000];
         SpriteInfo info = spriteInfos[i];
         memset(line, 0, sizeof(line));
-        sprintf(line, "%d %d %d %d %d %d %d\n", info.id, info.width, info.height, info.centerX, info.centerY, info.anchorX, info.anchorY);
+        sprintf(line, "%d %d %d %d %d %d %d %d %d\n", info.id, info.x, info.y, info.width, info.height, info.centerX, info.centerY, info.anchorX, info.anchorY);
         if (WriteFile(writeHandle, line, (DWORD)strlen(line), NULL, NULL) == 0) {
             printf("ERROR writing data file\n");
             return 1;
@@ -586,6 +706,7 @@ int main(int argc, char* argv[]) {
                 }
             }
             objTextCursor += sprintf(objTextCursor, "\n");
+            objTextCursor += sprintf(objTextCursor, "mapChance=%f\n", obj.mapChance);
         }
         if (obj.numCategories > 0) {
             objTextCursor += sprintf(objTextCursor, "categories=%d", obj.categories[0]);

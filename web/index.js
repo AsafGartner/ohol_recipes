@@ -89,12 +89,14 @@ DataLoader.prototype.parseFile = function(body) {
             } else {
                 var parts = line.split(" ");
                 var info = {
-                    width: parseInt(parts[1], 10),
-                    height: parseInt(parts[2], 10),
-                    centerX: parseInt(parts[3], 10),
-                    centerY: parseInt(parts[4], 10),
-                    anchorX: parseInt(parts[5], 10),
-                    anchorY: parseInt(parts[6], 10)
+                    x: parseInt(parts[1], 10),
+                    y: parseInt(parts[2], 10),
+                    width: parseInt(parts[3], 10),
+                    height: parseInt(parts[4], 10),
+                    centerX: parseInt(parts[5], 10),
+                    centerY: parseInt(parts[6], 10),
+                    anchorX: parseInt(parts[7], 10),
+                    anchorY: parseInt(parts[8], 10)
                 };
 
                 this.data.spriteInfo[parseInt(parts[0], 10)] = info;
@@ -136,6 +138,7 @@ DataLoader.prototype.parseFile = function(body) {
                     sprites: [],
                     spriteAppearOrder: null,
                     spriteHideOrder: null,
+                    creationScore: 0,
                     additive: true
                 };
                 for (var b = 0; b <= this.data.maxBiome; ++b) {
@@ -156,6 +159,8 @@ DataLoader.prototype.parseFile = function(body) {
                     for (var b = 0; b < biomes.length; ++b) {
                         curObj.biomes[parseInt(biomes[b], 10)] = 1;
                     }
+                } else if (line.startsWith("mapChance=")) {
+                    curObj.creationScore = parseFloat(line.slice(10));
                 } else if (line.startsWith("categories=")) {
                     var cats = line.slice(11).split(",");
                     for (var c = 0; c < cats.length; ++c) {
@@ -1132,6 +1137,21 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
         return compare;
     }.bind(this));
 
+    var groupedIngredients = [];
+    var prevIngredient = ingredients[0];
+    var count = 1;
+    for (var i = 1; i < ingredients.length; ++i) {
+        var ingredient = ingredients[i];
+        if (ingredient.id != prevIngredient.id) {
+            groupedIngredients.push([count, prevIngredient]);
+            prevIngredient = ingredient;
+            count = 1;
+        } else {
+            count++;
+        }
+    }
+    groupedIngredients.push([count, prevIngredient]);
+
     var newIngredientsEl = this.ingredientsEl.cloneNode(false);
     this.ingredientsEl.parentElement.insertBefore(newIngredientsEl, this.ingredientsEl);
     this.ingredientsEl.parentElement.removeChild(this.ingredientsEl);
@@ -1141,11 +1161,11 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
     this.stepsEl.parentElement.insertBefore(newStepsEl, this.stepsEl);
     this.stepsEl.parentElement.removeChild(this.stepsEl);
     this.stepsEl = newStepsEl;
-    for (var i = 0; i < ingredients.length; ++i) {
-        var node = ingredients[i];
+    for (var i = 0; i < groupedIngredients.length; ++i) {
+        var node = groupedIngredients[i][1];
         var ingredientEl = document.createElement("LI");
         ingredientEl.classList.add("ingredient");
-        ingredientEl.textContent = this.getNodeName(node);
+        ingredientEl.textContent = groupedIngredients[i][0] + "x " + this.getNodeName(node);
         this.ingredientsEl.appendChild(ingredientEl);
     }
 
@@ -1508,7 +1528,9 @@ function createObjectElement(obj, width, height, withInfo, nameType, numUsed) {
     for (var i = 0; i < obj.sprites.length; ++i) {
         var img = document.createElement("DIV");
         var spriteId = obj.sprites[i].id;
-        img.style.backgroundImage = "url(sprites/" + spriteId + ".png)";
+        // img.style.backgroundImage = "url(sprites/" + spriteId + ".png)";
+        img.style.backgroundImage = "url(spritesheet.png)";
+        img.style.backgroundPosition = -obj.sprites[i].info.x + "px " + -obj.sprites[i].info.y + "px";
         img.style.width = obj.sprites[i].info.width;
         img.style.height = obj.sprites[i].info.height;
         var pos = getSpritePos(obj, i);
@@ -1527,7 +1549,8 @@ function createObjectElement(obj, width, height, withInfo, nameType, numUsed) {
             var b = Math.floor(255*obj.sprites[i].b);
             img.style.backgroundColor = "rgb(" + r + ", " + g + ", " + b + ")";
             img.style.backgroundBlendMode = "multiply";
-            img.style.mask = "url(sprites/" + spriteId + ".png)";
+            // img.style.mask = "url(sprites/" + spriteId + ".png)";
+            img.style.mask = "url(spritesheet.png) " + -obj.sprites[i].info.x + "px " + -obj.sprites[i].info.y + "px";
             img.style["-webkit-mask"] = img.style.mask;
         }
         spriteContainer.appendChild(img);
