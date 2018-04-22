@@ -139,6 +139,7 @@ DataLoader.prototype.parseFile = function(body) {
                     spriteAppearOrder: null,
                     spriteHideOrder: null,
                     creationScore: 0,
+                    preferredTransition: null,
                     additive: true
                 };
                 for (var b = 0; b <= this.data.maxBiome; ++b) {
@@ -312,6 +313,18 @@ DataLoader.prototype.postprocessData = function() {
     var sortedIds = [-2, -1, 0];
     var remaining = [];
 
+    var maxCreationScore = 0;
+    for (var id = 0; id < this.data.objects.length; ++id) {
+        if (this.data.objects[id]) {
+            maxCreationScore = Math.max(this.data.objects[id].creationScore, maxCreationScore);
+        }
+    }
+    for (var id = 0; id < this.data.objects.length; ++id) {
+        if (this.data.objects[id]) {
+            this.data.objects[id].creationScore /= maxCreationScore;
+        }
+    }
+
     for (var id = 0; id < this.data.objects.length; ++id) {
         if (this.data.objects[id]) {
             if (this.data.objects[id].biomes.includes(1)) {
@@ -343,25 +356,30 @@ DataLoader.prototype.postprocessData = function() {
             var found = false;
             var ct = this.data.creationTransitions[id];
             if (ct) {
-                for (var t = 0; !found && t < ct.length; ++t) {
+                var score = -1;
+                var bestTransitionIdx = null;
+                for (var t = 0; t < ct.length; ++t) {
                     if (sortedIds.includes(ct[t].transition.actorId) && sortedIds.includes(ct[t].transition.targetId)) {
-                        this.data.techTree[techLevel].push(id);
-                        this.data.objects[id].techLevel = techLevel;
-                        newSortedIds.push(id);
-                        if (this.data.objects[id].categories && this.data.objects[id].categories.length > 0) {
-                            for (var cat = 0; cat < this.data.objects[id].categories.length; ++cat) {
-                                var catId = this.data.objects[id].categories[cat];
-                                if (this.data.objects[catId].techLevel == -1) {
-                                    this.data.objects[catId].techLevel = techLevel;
-                                }
-                                newSortedIds.push(catId);
-                            }
+                        if (!found) {
+                            this.data.techTree[techLevel].push(id);
+                            this.data.objects[id].techLevel = techLevel;
+                            newSortedIds.push(id);
+                            found = true;
                         }
-                        found = true;
+                        var actorScore = (ct[t].transition.actorId <= 0 ? 1 : this.data.objects[ct[t].transition.actorId].creationScore);
+                        var targetScore = (ct[t].transition.targetId <= 0 ? 1 : this.data.objects[ct[t].transition.targetId].creationScore);
+                        var creationScore = actorScore * targetScore * 0.99;
+                        if (creationScore > score) {
+                            score = creationScore;
+                            bestTransitionIdx = t;
+                        }
                     }
                 }
 
-                if (!found) {
+                if (found) {
+                    this.data.objects[id].creationScore = score;
+                    this.data.objects[id].preferredTransition = bestTransitionIdx;
+                } else {
                     rest.push(id);
                 }
             }
@@ -764,6 +782,7 @@ function RecipeView(container, onStateChanged) {
     this.container = container;
     this.targetObjectContainer = container.querySelector(".target_object .object_container");
     this.ingredientsEl = container.querySelector(".ingredients");
+    this.ingredientsLevelEl = container.querySelector(".required_level");
     this.stepsEl = container.querySelector(".steps");
     this.treeEl = container.querySelector(".tree");
     this.overEl = container.querySelector(".over");
@@ -771,6 +790,20 @@ function RecipeView(container, onStateChanged) {
     this.recipeTree = null;
     this.currentNode = null;
     this.data = null;
+    this.recipeMode = "text";
+    container.querySelector(".recipe_mode .text").classList.add("active");
+    container.querySelector(".recipe_mode .text").addEventListener("click", function() {
+        this.recipeMode = "text";
+        container.querySelector(".recipe_mode .text").classList.add("active");
+        container.querySelector(".recipe_mode .images").classList.remove("active");
+        this.updateRecipeUI();
+    }.bind(this));
+    container.querySelector(".recipe_mode .images").addEventListener("click", function() {
+        this.recipeMode = "images";
+        container.querySelector(".recipe_mode .text").classList.remove("active");
+        container.querySelector(".recipe_mode .images").classList.add("active");
+        this.updateRecipeUI();
+    }.bind(this));
 
     document.body.addEventListener("click", function() {
         if (this.treeEl) {
@@ -822,7 +855,7 @@ RecipeView.prototype.getNodeName = function(node) {
     } else if (id == -1 && type == "actor") {
         name = prettyTimeString(node.timer);
     } else if (id == -1 && type == "target") {
-        name = "Remove";
+        name = "Empty Ground";
     } else if (id == 0 && type == "actor") {
         name = "Hand";
     } else if (id == 0 && type == "target") {
@@ -921,6 +954,7 @@ RecipeView.prototype.makeNode = function(id, type, numUsed, timer, transitions, 
         numUsed: numUsed || 0,
         timer: timer || 0,
         type: type,
+        justMade: false,
         transitions: (transitions || []),
         selected: (selected === undefined ? -1 : selected)
     };
@@ -1035,11 +1069,19 @@ RecipeView.prototype.populateTransitions = function(node) {
             }
         }
         if (node.transitions.length > 0) {
+            if (0) {
+            node.transitions.sort(function(a, b) {
+                var creationScoreA = (a[0].id > 0 ? this.data.objects[a[0].id].creationScore : 1) * (a[1].id > 0 ? this.data.objects[a[1].id].creationScore : 1);
+                var creationScoreB = (b[0].id > 0 ? this.data.objects[b[0].id].creationScore : 1) * (b[1].id > 0 ? this.data.objects[b[1].id].creationScore : 1);
+                return creationScoreA - creationScoreB;
+            }.bind(this));
+            } else {
             node.transitions.sort(function(a, b) {
                 var maxA = Math.max((a[0].id > 0 ? this.data.objects[a[0].id].techLevel : -1), (a[1].id > 0 ? this.data.objects[a[1].id].techLevel : -1));
                 var maxB = Math.max((b[0].id > 0 ? this.data.objects[b[0].id].techLevel : -1), (b[1].id > 0 ? this.data.objects[b[1].id].techLevel : -1));
                 return maxA - maxB;
             }.bind(this));
+            }
         }
     }
 };
@@ -1114,16 +1156,20 @@ RecipeView.prototype.selectNodeChild = function(idx, el) {
     }
 
     this.treeEl.style.display = "none";
-    var modified = this.currentNode;
+    this.currentNode.justMade = true;
     this.currentNode = null;
-    this.updateRecipeUI(modified);
+    this.updateRecipeUI();
     this.triggerStateChanged();
 
     el.stopPropagation();
     return false;
 };
 
-RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
+RecipeView.prototype.drillDownToLevel = function(level) {
+    this.updateRecipeUI();
+};
+
+RecipeView.prototype.updateRecipeUI = function() {
     this.treeEl.style.display = "none";
     var ingredients = [];
     var steps = [];
@@ -1140,8 +1186,11 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
     var groupedIngredients = [];
     var prevIngredient = ingredients[0];
     var count = 1;
+    var maxLevel = this.data.objects[ingredients[0].id].techLevel;
     for (var i = 1; i < ingredients.length; ++i) {
         var ingredient = ingredients[i];
+        var techLevel = this.data.objects[ingredients[i].id].techLevel;
+        maxLevel = Math.max(techLevel, maxLevel);
         if (ingredient.id != prevIngredient.id) {
             groupedIngredients.push([count, prevIngredient]);
             prevIngredient = ingredient;
@@ -1151,6 +1200,8 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
         }
     }
     groupedIngredients.push([count, prevIngredient]);
+
+    this.ingredientsLevelEl.textContent = maxLevel;
 
     var newIngredientsEl = this.ingredientsEl.cloneNode(false);
     this.ingredientsEl.parentElement.insertBefore(newIngredientsEl, this.ingredientsEl);
@@ -1189,11 +1240,11 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
         for (var i = 0; i < steps.length; ++i) {
             var node = steps[i].node;
             var indent = steps[i].indent;
-            var stepText = this.getTextForStep(node);
             var children = node.transitions[node.selected];
             var stepEl = document.createElement("LI");
             stepEl.classList.add("step");
-            if (node == modifiedNode) {
+            if (node.justMade) {
+                node.justMade = false;
                 stepEl.classList.add("modified");
                 setTimeout(function(el) {
                     el.classList.remove("modified");
@@ -1207,59 +1258,81 @@ RecipeView.prototype.updateRecipeUI = function(modifiedNode) {
             if (steps[i].parent) {
                 indentEl.classList.add("has_parent");
             }
-            indentEl.style.left = -28 + -(indent * 10) + "px";
             indentEl.style.width = (indent * 10) + "px";
             stepEl.appendChild(indentEl);
-            stepEl.appendChild(document.createTextNode(stepText.preActor));
-            var actorEl = document.createElement("A");
-            actorEl.setAttribute("href", "javascript:;");
-            actorEl.classList.add("step_ingredient");
-            if (children[0] == this.currentNode) {
-                actorEl.classList.add("current");
+
+            if (this.recipeMode == "text") {
+                this.stepsEl.classList.remove("images");
+                var stepText = this.getTextForStep(node);
+                stepEl.appendChild(document.createTextNode(stepText.preActor));
+                var actorEl = document.createElement("A");
+                actorEl.setAttribute("href", "javascript:;");
+                actorEl.classList.add("step_ingredient");
+                if (children[0] == this.currentNode) {
+                    actorEl.classList.add("current");
+                }
+                actorEl.classList.add("actor");
+                if (children[0].id > 0 && children[0].selected == -1) {
+                    actorEl.classList.add("ingredient");
+                }
+                actorEl.textContent = this.getNodeName(children[0]);
+                if (children[0].id > 0) {
+                    actorEl.addEventListener("click", this.modifyNode.bind(this, actorEl, children[0]));
+                } else {
+                    actorEl.classList.add("unclickable");
+                }
+                stepEl.appendChild(actorEl);
+                stepEl.appendChild(document.createTextNode(stepText.preTarget));
+                var targetEl = document.createElement("A");
+                targetEl.setAttribute("href", "javascript:;");
+                targetEl.classList.add("step_ingredient");
+                if (children[1] == this.currentNode) {
+                    targetEl.classList.add("current");
+                }
+                targetEl.classList.add("target");
+                if (children[1].id > 0 && children[1].selected == -1) {
+                    targetEl.classList.add("ingredient");
+                }
+                targetEl.textContent = this.getNodeName(children[1]);
+                if (children[1].id > 0) {
+                    targetEl.addEventListener("click", this.modifyNode.bind(this, targetEl, children[1]));
+                } else {
+                    targetEl.classList.add("unclickable");
+                }
+                stepEl.appendChild(targetEl);
+                stepEl.appendChild(document.createTextNode(stepText.preResult));
+                var resultEl = document.createElement("A");
+                resultEl.setAttribute("href", "javascript:;");
+                resultEl.classList.add("step_ingredient");
+                if (node == this.currentNode) {
+                    resultEl.classList.add("current");
+                }
+                resultEl.classList.add("result");
+                if (node == this.recipeTree) {
+                    resultEl.classList.add("final");
+                }
+                resultEl.textContent = this.getNodeName(node);
+                resultEl.addEventListener("click", this.modifyNode.bind(this, resultEl, node));
+                stepEl.appendChild(resultEl);
+            } else if (this.recipeMode == "images") {
+                this.stepsEl.classList.add("images");
+                var size = 100;
+                var actorEl = createObjectElementById(this.data.objects, children[0].id, "actor", children[0].timer, children[0].numUsed, size, size);
+                if (children[0].id > 0) {
+                    actorEl.addEventListener("click", this.modifyNode.bind(this, actorEl, children[0]));
+                }
+                var targetEl = createObjectElementById(this.data.objects, children[1].id, "target", children[1].timer, children[1].numUsed, size, size);
+                if (children[1].id > 0) {
+                    targetEl.addEventListener("click", this.modifyNode.bind(this, targetEl, children[1]));
+                }
+                var resultEl = createObjectElement(this.data.objects[node.id], size, size, false, null, node.numUsed);
+                resultEl.addEventListener("click", this.modifyNode.bind(this, resultEl, node));
+                stepEl.appendChild(actorEl);
+                stepEl.appendChild(document.createTextNode("+"));
+                stepEl.appendChild(targetEl);
+                stepEl.appendChild(document.createTextNode("="));
+                stepEl.appendChild(resultEl);
             }
-            actorEl.classList.add("actor");
-            if (children[0].id > 0 && children[0].selected == -1) {
-                actorEl.classList.add("ingredient");
-            }
-            actorEl.textContent = this.getNodeName(children[0]);
-            if (children[0].id > 0) {
-                actorEl.addEventListener("click", this.modifyNode.bind(this, actorEl, children[0]));
-            } else {
-                actorEl.classList.add("unclickable");
-            }
-            stepEl.appendChild(actorEl);
-            stepEl.appendChild(document.createTextNode(stepText.preTarget));
-            var targetEl = document.createElement("A");
-            targetEl.setAttribute("href", "javascript:;");
-            targetEl.classList.add("step_ingredient");
-            if (children[1] == this.currentNode) {
-                targetEl.classList.add("current");
-            }
-            targetEl.classList.add("target");
-            if (children[1].id > 0 && children[1].selected == -1) {
-                targetEl.classList.add("ingredient");
-            }
-            targetEl.textContent = this.getNodeName(children[1]);
-            if (children[1].id > 0) {
-                targetEl.addEventListener("click", this.modifyNode.bind(this, targetEl, children[1]));
-            } else {
-                targetEl.classList.add("unclickable");
-            }
-            stepEl.appendChild(targetEl);
-            stepEl.appendChild(document.createTextNode(stepText.preResult));
-            var resultEl = document.createElement("A");
-            resultEl.setAttribute("href", "javascript:;");
-            resultEl.classList.add("step_ingredient");
-            if (node == this.currentNode) {
-                resultEl.classList.add("current");
-            }
-            resultEl.classList.add("result");
-            if (node == this.recipeTree) {
-                resultEl.classList.add("final");
-            }
-            resultEl.textContent = this.getNodeName(node);
-            resultEl.addEventListener("click", this.modifyNode.bind(this, resultEl, node));
-            stepEl.appendChild(resultEl);
             steps[i].el = stepEl;
             this.stepsEl.appendChild(stepEl);
         }
@@ -1303,7 +1376,7 @@ RecipeView.prototype.processNode = function(ingredients, steps, node, parent, si
         step.indent = Math.max(leftIndent, rightIndent);
 
         if (step.parent) {
-            step.indent += 1;
+            step.indent += 0.5;
         }
         steps.push(step);
         return step;
@@ -1370,7 +1443,7 @@ function createObjectElementById(objects, id, type, time, numUsed, width, height
         result.querySelector(".sprite_container").style.height = (height-30) + "px";
     } else if (id == -1 && type == "target") {
         result = objectPrototype.cloneNode(true);
-        result.querySelector(".name").textContent = "Remove";
+        result.querySelector(".name").textContent = "Empty Ground";
         result.querySelector(".sprite_container").style.width = width + "px";
         result.querySelector(".sprite_container").style.height = (height-30) + "px";
     } else if (id == 0 && type == "actor") {
@@ -1609,8 +1682,19 @@ function prettyTimeString(seconds) {
 }
 
 
-var page = new Page();
+var page = null;
 var dataLoader = new DataLoader();
-dataLoader.addOnLoadCallback(function(data) {
-    page.setData(data);
-});
+if (document.readyState != "loading") {
+    start();
+} else {
+    document.addEventListener("DOMContentLoaded", function() {
+        start();
+    });
+}
+
+function start() {
+    page = new Page();
+    dataLoader.addOnLoadCallback(function(data) {
+        page.setData(data);
+    });
+}

@@ -1,6 +1,16 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<title>Recipe Explorer - One Hour One Life</title>
+<script type="text/javascript" src="index.js" async="true"></script>
+<link rel="preload" as="image" href="spritesheet.png">
+<link rel="preload" as="image" href="ground_0.png">
+<link rel="preload" as="image" href="ground_1.png">
+<link rel="preload" as="image" href="ground_2.png">
+<link rel="preload" as="image" href="ground_3.png">
+<link rel="preload" as="image" href="ground_4.png">
+<link rel="preload" as="image" href="ground_5.png">
+<link rel="preload" as="fetch" href="data.txt" type="text/plain">
 <style>
 /*
 darkest: #002b36;
@@ -27,6 +37,8 @@ body {
     overflow-y: scroll;
     height: 100%;
     background: #002b36;
+    image-rendering: optimizequality;
+    image-rendering: -webkit-optimize-contrast;
 }
 
 * {
@@ -391,8 +403,13 @@ body > .header {
     border-left: 1px solid #b58900;
     position: absolute;
     top: 10px;
-    left: 0;
+    right: calc(100% + 30px);
     border-radius: 5px 0 0 0;
+}
+
+.recipe_view .steps.images .step .indent {
+    top: 50px;
+    right: calc(100% + 50px);
 }
 
 .recipe_view .step .indent.left {
@@ -429,6 +446,92 @@ body > .header {
     width: 1px;
 }
 
+.recipe_view .steps.images li {
+    font-size: 30px;
+}
+
+.recipe_view .steps.images li > * {
+    vertical-align: middle;
+}
+
+.recipe_view .recipe_mode {
+    vertical-align: middle;
+    display: inline-block;
+    font-size: 10px;
+}
+
+.recipe_view .recipe_mode {
+    text-align: center;
+}
+
+.recipe_view .recipe_mode > span:first-child {
+    border-radius: 7px 0 0 7px;
+}
+
+.recipe_view .recipe_mode > span:last-child {
+    border-radius: 0 7px 7px 0;
+}
+
+.recipe_view .recipe_mode > span {
+    background: #073642;
+    padding: 3px;
+    min-width: 50px;
+    display: inline-block;
+    text-align: center;
+    cursor: pointer;
+    font-weight: bold;
+}
+.recipe_view .recipe_mode > span:hover {
+    background: rgb(22, 96, 138);
+    color: rgb(171, 182, 186);
+}
+
+.recipe_view .recipe_mode > span.active {
+    background: #268bd2;
+    color: white;
+}
+
+.recipe_view .requirements {
+    vertical-align: middle;
+    display: inline-block;
+    font-size: 10px;
+}
+
+.recipe_view .requirements {
+    text-align: center;
+}
+
+.recipe_view .requirements > span:first-child {
+    border-radius: 7px 0 0 7px;
+}
+
+.recipe_view .requirements > span:last-child {
+    border-radius: 0 7px 7px 0;
+}
+
+.recipe_view .requirements > span {
+    background: #073642;
+    padding: 3px 5px;
+    min-width: 50px;
+    display: inline-block;
+    text-align: center;
+    cursor: pointer;
+    font-weight: bold;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.recipe_view .requirements > span:hover {
+    background: rgb(22, 96, 138);
+    color: rgb(171, 182, 186);
+}
+
+.recipe_view .requirements > span.active {
+    background: #268bd2;
+    color: white;
+    cursor: default;
+}
+
 .header .back {
     border-radius: 3px;
     padding: 5px;
@@ -446,7 +549,6 @@ body > .header {
     color: #839496;
 }
 </style>
-<title>Recipe Explorer - One Hour One Life</title>
 </head>
 <body>
 <div class="header">
@@ -474,9 +576,17 @@ body > .header {
         <div class="object_container"></div>
     </div>
     <div class="recipe">
-        <h3>Ingredients</h3>
+        <h3>Ingredients
+            <div class="requirements">
+                <span class="current active">Required Tech Level: <span class="required_level"></span></span><span class="level_up">Up one level</span>
+            </div>
+        </h3>
         <ul class="ingredients"></ul>
-        <h3>Instructions</h3>
+        <h3>Instructions
+            <div class="recipe_mode">
+                <span class="text">Text</span><span class="images">Images</span>
+            </div>
+        </h3>
         <ol class="steps"></ol>
         <div class="over">
         </div>
@@ -485,6 +595,5 @@ body > .header {
     </div>
 </div>
 
-<script type="text/javascript" src="index.js"></script>
 </body>
 </html>

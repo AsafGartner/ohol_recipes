@@ -9,9 +9,12 @@
 #define STB_RECT_PACK_IMPLEMENTATION
 #include "stb_rect_pack.h"
 
-#define STBI_MSC_SECURE_CRT
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
+#pragma warning(push)
+#pragma warning(disable: 4334)
+#pragma warning(disable: 4127)
+#pragma warning(disable: 4244)
+#include "miniz.c"
+#pragma warning(pop)
 
 
 struct Transition {
@@ -95,7 +98,6 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s [path-to-game-folder]\n", argv[0]);
         return 1;
     }
-
     int totalSpriteArea = 0;
     bool requiredObjects[100000] = {};
     int maxObjId = -1;
@@ -624,11 +626,21 @@ int main(int argc, char* argv[]) {
 
     printf("Pooping spritesheet...\n");
 
-    int pngResult = stbi_write_png("spritesheet.png", spritesheetSide, spritesheetSide, 4, ssData, ssStride);
-    if (pngResult) {
-        printf("PNG written successfully\n");
+    size_t pngDataSize;
+    void *pngData = tdefl_write_image_to_png_file_in_memory_ex(ssData, spritesheetSide, spritesheetSide, 4, &pngDataSize, 10, 0);
+
+    HANDLE spritesheetHandle = CreateFileA("spritesheet.png", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (spritesheetHandle == INVALID_HANDLE_VALUE) {
+        printf("ERROR creating spritesheet file\n");
+        return 1;
     }
 
+    if (WriteFile(spritesheetHandle, pngData, (DWORD)pngDataSize, NULL, NULL) == 0) {
+        printf("ERROR writing spritesheet\n");
+        return 1;
+    }
+
+    CloseHandle(spritesheetHandle);
 
     printf("Pooping data file...\n");
 
@@ -759,20 +771,6 @@ int main(int argc, char* argv[]) {
     }
 
     CloseHandle(writeHandle);
-
-    printf("Pooping sprite list...\n");
-
-    HANDLE spriteFileHandle = CreateFileA("sprite_list.txt", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-
-    for (int i = 0; i <= maxSpriteId; ++i) {
-        if (requiredSprites[i]) {
-            char spriteFilename[100];
-            sprintf(spriteFilename, "%d.tga\n", i);
-            WriteFile(spriteFileHandle, spriteFilename, (DWORD)strlen(spriteFilename), NULL, NULL);
-        }
-    }
-
-    CloseHandle(spriteFileHandle);
 
     return 0;
 }
